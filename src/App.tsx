@@ -8,6 +8,11 @@ import Projects from "./pages/admin/Projects";
 import Inbox from "./pages/admin/Inbox";
 import Settings from "./pages/admin/Settings";
 import Skills from "./pages/admin/Skills";
+import ExperienceManager from "./pages/admin/ExperienceManager";
+import EducationManager from "./pages/admin/EducationManager";
+import CertificateManager from "./pages/admin/CertificateManager";
+import ContentEditor from "./pages/admin/ContentEditor";
+import SocialLinks from "./pages/admin/SocialLinks";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -25,11 +30,11 @@ const App = () => (
           <Route path="/admin/inbox" element={<Inbox />} />
           <Route path="/admin/settings" element={<Settings />} />
           <Route path="/admin/skills" element={<Skills />} />
-          <Route path="/admin/content" element={<Dashboard />} />
-          <Route path="/admin/experience" element={<Dashboard />} />
-          <Route path="/admin/education" element={<Dashboard />} />
-          <Route path="/admin/certificates" element={<Dashboard />} />
-          <Route path="/admin/social" element={<Settings />} />
+          <Route path="/admin/experience" element={<ExperienceManager />} />
+          <Route path="/admin/education" element={<EducationManager />} />
+          <Route path="/admin/certificates" element={<CertificateManager />} />
+          <Route path="/admin/content" element={<ContentEditor />} />
+          <Route path="/admin/social" element={<SocialLinks />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>

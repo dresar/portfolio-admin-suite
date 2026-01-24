@@ -38,7 +38,7 @@ import {
 } from '@/components/ui/select';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
-import { useMediaQuery } from '@/hooks/use-mobile';
+import { useIsMobile } from '@/hooks/use-mobile';
 import {
   Drawer,
   DrawerContent,
@@ -53,7 +53,7 @@ const years = Array.from({ length: 50 }, (_, i) => currentYear - i);
 
 const EducationManager = () => {
   const { education, addEducation, updateEducation, deleteEducation } = useAdminStore();
-  const isMobile = useMediaQuery('(max-width: 768px)');
+  const isMobile = useIsMobile();
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);

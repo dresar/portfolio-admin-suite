@@ -42,7 +42,7 @@ import {
 } from '@/components/ui/popover';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
-import { useMediaQuery } from '@/hooks/use-mobile';
+import { useIsMobile } from '@/hooks/use-mobile';
 import {
   Drawer,
   DrawerContent,
@@ -70,7 +70,7 @@ const typeColors: Record<EmploymentType, string> = {
 
 const ExperienceManager = () => {
   const { experiences, addExperience, updateExperience, deleteExperience } = useAdminStore();
-  const isMobile = useMediaQuery('(max-width: 768px)');
+  const isMobile = useIsMobile();
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);

@@ -1,10 +1,10 @@
 import { motion } from 'framer-motion';
-import { FolderOpen, Inbox, FileText, Users } from 'lucide-react';
+import { FolderOpen, Inbox, FileText, Users, Briefcase, GraduationCap, Award, Share2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
 interface EmptyStateProps {
-  icon?: 'folder' | 'inbox' | 'file' | 'users';
+  icon?: 'folder' | 'inbox' | 'file' | 'users' | 'briefcase' | 'graduation-cap' | 'award' | 'share-2';
   title: string;
   description: string;
   action?: {
@@ -19,6 +19,10 @@ const icons = {
   inbox: Inbox,
   file: FileText,
   users: Users,
+  briefcase: Briefcase,
+  'graduation-cap': GraduationCap,
+  award: Award,
+  'share-2': Share2,
 };
 
 export function EmptyState({ icon = 'folder', title, description, action, className }: EmptyStateProps) {

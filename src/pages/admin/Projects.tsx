@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import { motion, Reorder } from 'framer-motion';
 import {
   Plus,
@@ -14,6 +14,11 @@ import {
   GripVertical,
   Copy,
   Check,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
 import { DashboardLayout } from '@/components/admin/DashboardLayout';
 import { EmptyState } from '@/components/admin/EmptyState';
@@ -52,6 +57,26 @@ import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
+type SortField = 'title' | 'createdAt' | 'status' | 'views';
+type SortDirection = 'asc' | 'desc';
+
+// Custom debounce hook
+function useDebounce<T>(value: T, delay: number): T {
+  const [debouncedValue, setDebouncedValue] = useState<T>(value);
+
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedValue(value);
+    }, delay);
+
+    return () => {
+      clearTimeout(handler);
+    };
+  }, [value, delay]);
+
+  return debouncedValue;
+}
+
 const Projects = () => {
   const {
     projects,
@@ -65,6 +90,7 @@ const Projects = () => {
   } = useAdminStore();
 
   const [searchQuery, setSearchQuery] = useState('');
+  const debouncedSearch = useDebounce(searchQuery, 300);
   const [statusFilter, setStatusFilter] = useState<'all' | 'published' | 'draft'>('all');
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -74,22 +100,84 @@ const Projects = () => {
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [reorderMode, setReorderMode] = useState(false);
 
-  // Filter and search projects
-  const filteredProjects = useMemo(() => {
-    return projects
-      .filter((p) => {
-        const matchesSearch =
-          p.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          p.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          p.tags.some((t) => t.toLowerCase().includes(searchQuery.toLowerCase()));
-        const matchesStatus = statusFilter === 'all' || p.status === statusFilter;
-        return matchesSearch && matchesStatus;
-      })
-      .sort((a, b) => a.order - b.order);
-  }, [projects, searchQuery, statusFilter]);
+  // Sorting state
+  const [sortField, setSortField] = useState<SortField>('createdAt');
+  const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
+
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const [rowsPerPage, setRowsPerPage] = useState(5);
+
+  // Handle sorting
+  const handleSort = (field: SortField) => {
+    if (sortField === field) {
+      setSortDirection((prev) => (prev === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortField(field);
+      setSortDirection('asc');
+    }
+    setCurrentPage(1); // Reset to first page on sort
+  };
+
+  const getSortIcon = (field: SortField) => {
+    if (sortField !== field) return <ArrowUpDown className="h-4 w-4 ml-1 opacity-50" />;
+    return sortDirection === 'asc' ? (
+      <ArrowUp className="h-4 w-4 ml-1 text-primary" />
+    ) : (
+      <ArrowDown className="h-4 w-4 ml-1 text-primary" />
+    );
+  };
+
+  // Filter, search, and sort projects
+  const filteredAndSortedProjects = useMemo(() => {
+    let result = projects.filter((p) => {
+      const matchesSearch =
+        p.title.toLowerCase().includes(debouncedSearch.toLowerCase()) ||
+        p.description.toLowerCase().includes(debouncedSearch.toLowerCase()) ||
+        p.tags.some((t) => t.toLowerCase().includes(debouncedSearch.toLowerCase()));
+      const matchesStatus = statusFilter === 'all' || p.status === statusFilter;
+      return matchesSearch && matchesStatus;
+    });
+
+    // Sort
+    result = [...result].sort((a, b) => {
+      let comparison = 0;
+      switch (sortField) {
+        case 'title':
+          comparison = a.title.localeCompare(b.title);
+          break;
+        case 'createdAt':
+          comparison = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+          break;
+        case 'status':
+          comparison = a.status.localeCompare(b.status);
+          break;
+        case 'views':
+          comparison = a.views - b.views;
+          break;
+        default:
+          comparison = a.order - b.order;
+      }
+      return sortDirection === 'asc' ? comparison : -comparison;
+    });
+
+    return result;
+  }, [projects, debouncedSearch, statusFilter, sortField, sortDirection]);
+
+  // Pagination calculations
+  const totalPages = Math.ceil(filteredAndSortedProjects.length / rowsPerPage);
+  const paginatedProjects = useMemo(() => {
+    const startIndex = (currentPage - 1) * rowsPerPage;
+    return filteredAndSortedProjects.slice(startIndex, startIndex + rowsPerPage);
+  }, [filteredAndSortedProjects, currentPage, rowsPerPage]);
+
+  // Reset to first page when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [debouncedSearch, statusFilter, rowsPerPage]);
 
   const handleSelectAll = (checked: boolean) => {
-    setSelectedIds(checked ? filteredProjects.map((p) => p.id) : []);
+    setSelectedIds(checked ? paginatedProjects.map((p) => p.id) : []);
   };
 
   const handleSelect = (id: string, checked: boolean) => {
@@ -224,7 +312,7 @@ const Projects = () => {
         )}
 
         {/* Projects Table/Cards */}
-        {filteredProjects.length === 0 ? (
+        {filteredAndSortedProjects.length === 0 ? (
           <EmptyState
             icon="folder"
             title="No projects found"
@@ -239,11 +327,11 @@ const Projects = () => {
           >
             <Reorder.Group
               axis="y"
-              values={filteredProjects}
+              values={filteredAndSortedProjects}
               onReorder={(newOrder) => reorderProjects(newOrder.map((p, i) => ({ ...p, order: i + 1 })))}
               className="space-y-2"
             >
-              {filteredProjects.map((project) => (
+              {filteredAndSortedProjects.map((project) => (
                 <Reorder.Item
                   key={project.id}
                   value={project}
@@ -280,20 +368,41 @@ const Projects = () => {
                   <tr className="border-b border-border">
                     <th className="p-4 text-left">
                       <Checkbox
-                        checked={selectedIds.length === filteredProjects.length && filteredProjects.length > 0}
+                        checked={selectedIds.length === paginatedProjects.length && paginatedProjects.length > 0}
                         onCheckedChange={handleSelectAll}
                       />
                     </th>
-                    <th className="p-4 text-left text-sm font-medium text-muted-foreground">Project</th>
+                    <th className="p-4 text-left">
+                      <button
+                        onClick={() => handleSort('title')}
+                        className="flex items-center text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+                      >
+                        Project {getSortIcon('title')}
+                      </button>
+                    </th>
                     <th className="p-4 text-left text-sm font-medium text-muted-foreground">Tags</th>
-                    <th className="p-4 text-left text-sm font-medium text-muted-foreground">Status</th>
+                    <th className="p-4 text-left">
+                      <button
+                        onClick={() => handleSort('status')}
+                        className="flex items-center text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+                      >
+                        Status {getSortIcon('status')}
+                      </button>
+                    </th>
                     <th className="p-4 text-left text-sm font-medium text-muted-foreground">Featured</th>
-                    <th className="p-4 text-left text-sm font-medium text-muted-foreground">Views</th>
+                    <th className="p-4 text-left">
+                      <button
+                        onClick={() => handleSort('views')}
+                        className="flex items-center text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+                      >
+                        Views {getSortIcon('views')}
+                      </button>
+                    </th>
                     <th className="p-4 text-left text-sm font-medium text-muted-foreground">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredProjects.map((project) => (
+                  {paginatedProjects.map((project) => (
                     <tr
                       key={project.id}
                       className="border-b border-border table-row-hover"
@@ -420,7 +529,7 @@ const Projects = () => {
 
             {/* Mobile Cards */}
             <div className="lg:hidden grid gap-4">
-              {filteredProjects.map((project, index) => (
+              {paginatedProjects.map((project, index) => (
                 <motion.div
                   key={project.id}
                   initial={{ opacity: 0, y: 20 }}
@@ -491,6 +600,78 @@ const Projects = () => {
                 </motion.div>
               ))}
             </div>
+
+            {/* Pagination */}
+            {totalPages > 0 && (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ delay: 0.3 }}
+                className="flex flex-col sm:flex-row items-center justify-between gap-4 mt-6 p-4 glass rounded-xl"
+              >
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-muted-foreground">Rows per page:</span>
+                  <Select
+                    value={String(rowsPerPage)}
+                    onValueChange={(v) => setRowsPerPage(Number(v))}
+                  >
+                    <SelectTrigger className="w-20">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="5">5</SelectItem>
+                      <SelectItem value="10">10</SelectItem>
+                      <SelectItem value="20">20</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <span className="text-sm text-muted-foreground ml-4">
+                    Showing {((currentPage - 1) * rowsPerPage) + 1} - {Math.min(currentPage * rowsPerPage, filteredAndSortedProjects.length)} of {filteredAndSortedProjects.length}
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-1">
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    disabled={currentPage === 1}
+                    onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                  </Button>
+                  {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                    let pageNum: number;
+                    if (totalPages <= 5) {
+                      pageNum = i + 1;
+                    } else if (currentPage <= 3) {
+                      pageNum = i + 1;
+                    } else if (currentPage >= totalPages - 2) {
+                      pageNum = totalPages - 4 + i;
+                    } else {
+                      pageNum = currentPage - 2 + i;
+                    }
+                    return (
+                      <Button
+                        key={pageNum}
+                        variant={currentPage === pageNum ? 'default' : 'outline'}
+                        size="icon"
+                        onClick={() => setCurrentPage(pageNum)}
+                        className={currentPage === pageNum ? 'btn-neon' : ''}
+                      >
+                        {pageNum}
+                      </Button>
+                    );
+                  })}
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    disabled={currentPage === totalPages}
+                    onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                  >
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                </div>
+              </motion.div>
+            )}
           </>
         )}
       </div>
