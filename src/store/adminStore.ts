@@ -49,6 +49,8 @@ export interface Skill {
   icon?: string;
 }
 
+export type EmploymentType = 'full-time' | 'part-time' | 'freelance' | 'internship' | 'contract';
+
 export interface Experience {
   id: string;
   company: string;
@@ -58,6 +60,8 @@ export interface Experience {
   endDate: string | null;
   current: boolean;
   bullets: string[];
+  type: EmploymentType;
+  location?: string;
 }
 
 export interface Education {
@@ -68,7 +72,9 @@ export interface Education {
   startDate: string;
   endDate: string;
   gpa?: string;
-  image?: string;
+  logo?: string;
+  attachments: string[];
+  gallery: string[];
 }
 
 export interface Certificate {
@@ -78,7 +84,8 @@ export interface Certificate {
   issueDate: string;
   expiryDate?: string;
   credentialUrl?: string;
-  image?: string;
+  image: string;
+  verified?: boolean;
 }
 
 export interface SocialLink {
@@ -374,6 +381,8 @@ const initialExperiences: Experience[] = [
     startDate: '2022-06-01',
     endDate: null,
     current: true,
+    type: 'full-time',
+    location: 'San Francisco, CA',
     bullets: [
       'Led a team of 5 developers in building a React-based dashboard',
       'Improved application performance by 40%',
@@ -388,10 +397,28 @@ const initialExperiences: Experience[] = [
     startDate: '2020-03-01',
     endDate: '2022-05-31',
     current: false,
+    type: 'full-time',
+    location: 'Remote',
     bullets: [
       'Developed RESTful APIs using Node.js and Express',
       'Created responsive UIs with React and Tailwind CSS',
       'Managed databases with PostgreSQL and MongoDB',
+    ],
+  },
+  {
+    id: '3',
+    company: 'Freelance Projects',
+    role: 'Web Developer',
+    description: 'Worked on various client projects including e-commerce sites and web applications.',
+    startDate: '2019-01-01',
+    endDate: '2020-02-28',
+    current: false,
+    type: 'freelance',
+    location: 'Remote',
+    bullets: [
+      'Built custom WordPress themes and plugins',
+      'Developed landing pages with high conversion rates',
+      'Provided technical consultation for startups',
     ],
   },
 ];
@@ -405,6 +432,23 @@ const initialEducation: Education[] = [
     startDate: '2016-09-01',
     endDate: '2020-06-30',
     gpa: '3.8',
+    logo: 'https://images.unsplash.com/photo-1562774053-701939374585?w=200',
+    attachments: ['https://images.unsplash.com/photo-1523050854058-8df90110c9f1?w=800'],
+    gallery: [
+      'https://images.unsplash.com/photo-1541339907198-e08756dedf3f?w=800',
+      'https://images.unsplash.com/photo-1523580494863-6f3031224c94?w=800',
+    ],
+  },
+  {
+    id: '2',
+    institution: 'Tech Bootcamp Academy',
+    degree: 'Certificate',
+    field: 'Full Stack Web Development',
+    startDate: '2019-06-01',
+    endDate: '2019-12-15',
+    logo: 'https://images.unsplash.com/photo-1517694712202-14dd9538aa97?w=200',
+    attachments: [],
+    gallery: [],
   },
 ];
 
@@ -416,6 +460,8 @@ const initialCertificates: Certificate[] = [
     issueDate: '2023-06-15',
     expiryDate: '2026-06-15',
     credentialUrl: 'https://aws.amazon.com/certification',
+    image: 'https://images.unsplash.com/photo-1451187580459-43490279c0fa?w=800',
+    verified: true,
   },
   {
     id: '2',
@@ -423,6 +469,25 @@ const initialCertificates: Certificate[] = [
     issuer: 'Google',
     issueDate: '2023-03-20',
     credentialUrl: 'https://cloud.google.com/certification',
+    image: 'https://images.unsplash.com/photo-1573164713988-8665fc963095?w=800',
+    verified: true,
+  },
+  {
+    id: '3',
+    name: 'React Developer Certificate',
+    issuer: 'Meta',
+    issueDate: '2022-11-10',
+    credentialUrl: 'https://coursera.org/verify/professional-cert',
+    image: 'https://images.unsplash.com/photo-1633356122544-f134324a6cee?w=800',
+    verified: true,
+  },
+  {
+    id: '4',
+    name: 'TypeScript Fundamentals',
+    issuer: 'Udemy',
+    issueDate: '2022-08-20',
+    image: 'https://images.unsplash.com/photo-1587620962725-abab7fe55159?w=800',
+    verified: false,
   },
 ];
 
