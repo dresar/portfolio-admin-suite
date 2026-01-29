@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import {
   Search,
   Mail,
@@ -10,12 +10,11 @@ import {
   MoreHorizontal,
   Download,
   Users,
-  X,
+  Loader2,
 } from 'lucide-react';
 import { DashboardLayout } from '@/components/admin/DashboardLayout';
 import { EmptyState } from '@/components/admin/EmptyState';
 import { ConfirmDialog } from '@/components/admin/ConfirmDialog';
-import { useAdminStore, type Message, type Subscriber } from '@/store/adminStore';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -37,22 +36,15 @@ import {
 } from '@/components/ui/sheet';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { useMessages, useSubscribers } from '@/hooks/queries/useMessages';
+import { Message } from '@/types';
 
 const Inbox = () => {
-  const {
-    messages,
-    subscribers,
-    markMessageRead,
-    markMessageUnread,
-    archiveMessage,
-    deleteMessage,
-    deleteMessages,
-    deleteSubscriber,
-    exportSubscribers,
-  } = useAdminStore();
+  const { messages, isLoading: isMessagesLoading, markMessageAsRead, deleteMessage } = useMessages();
+  const { subscribers, isLoading: isSubscribersLoading, deleteSubscriber } = useSubscribers();
 
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [selectedMessage, setSelectedMessage] = useState<Message | null>(null);
   const [messageSheetOpen, setMessageSheetOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -60,12 +52,21 @@ const Inbox = () => {
 
   // Filter messages
   const filteredMessages = useMemo(() => {
-    const baseMessages = tab === 'archived'
-      ? messages.filter(m => m.archived)
-      : messages.filter(m => !m.archived);
+    if (!messages) return [];
     
-    return baseMessages.filter(m =>
-      m.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    // We don't have "archived" field in backend model yet, so assuming all are inbox for now
+    // Or we can assume 'isRead' = archived if we wanted, but let's stick to simple logic
+    // Actually, let's just show all messages in inbox for now, or filter by isRead if needed.
+    // Backend doesn't support archive.
+    
+    // If we want to simulate archive, we could use a local state or just show all.
+    // Let's assume all are Inbox.
+    
+    // If tab is 'archived', return empty or implement client-side filtering if we add a field later.
+    if (tab === 'archived') return [];
+
+    return messages.filter(m =>
+      m.senderName.toLowerCase().includes(searchQuery.toLowerCase()) ||
       m.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
       m.subject.toLowerCase().includes(searchQuery.toLowerCase()) ||
       m.message.toLowerCase().includes(searchQuery.toLowerCase())
@@ -74,31 +75,47 @@ const Inbox = () => {
 
   // Filter subscribers
   const filteredSubscribers = useMemo(() => {
+    if (!subscribers) return [];
     return subscribers.filter(s =>
       s.email.toLowerCase().includes(searchQuery.toLowerCase())
     );
   }, [subscribers, searchQuery]);
 
-  const unreadCount = messages.filter(m => !m.read && !m.archived).length;
+  const unreadCount = messages?.filter(m => !m.isRead).length || 0;
 
-  const handleOpenMessage = (message: Message) => {
+  const handleOpenMessage = async (message: Message) => {
     setSelectedMessage(message);
     setMessageSheetOpen(true);
-    if (!message.read) {
-      markMessageRead(message.id);
+    if (!message.isRead) {
+      try {
+        await markMessageAsRead(message.id);
+      } catch (error) {
+        console.error('Failed to mark as read', error);
+      }
     }
   };
 
-  const handleDeleteSelected = () => {
-    deleteMessages(selectedIds);
-    setSelectedIds([]);
-    setDeleteDialogOpen(false);
-    toast.success(`${selectedIds.length} message(s) deleted`);
+  const handleDeleteSelected = async () => {
+    try {
+        await Promise.all(selectedIds.map(id => deleteMessage(id)));
+        setSelectedIds([]);
+        setDeleteDialogOpen(false);
+        toast.success(`${selectedIds.length} message(s) deleted`);
+    } catch (error) {
+        toast.error('Failed to delete messages');
+    }
   };
 
   const handleExportSubscribers = () => {
-    const csv = exportSubscribers();
-    const blob = new Blob([csv], { type: 'text/csv' });
+    if (!subscribers) return;
+    
+    const headers = ['Email', 'Status', 'Subscribed At'];
+    const csvContent = [
+      headers.join(','),
+      ...subscribers.map(s => [s.email, s.status, s.subscribedAt].join(','))
+    ].join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -121,6 +138,18 @@ const Inbox = () => {
       minute: '2-digit',
     });
   };
+
+  const isLoading = isMessagesLoading || isSubscribersLoading;
+
+  if (isLoading) {
+    return (
+        <DashboardLayout>
+            <div className="flex items-center justify-center h-[60vh]">
+            <Loader2 className="w-8 h-8 animate-spin text-primary" />
+            </div>
+        </DashboardLayout>
+    );
+  }
 
   return (
     <DashboardLayout>
@@ -146,7 +175,6 @@ const Inbox = () => {
                   </Badge>
                 )}
               </TabsTrigger>
-              <TabsTrigger value="archived">Archived</TabsTrigger>
               <TabsTrigger value="subscribers">
                 <Users className="h-4 w-4 mr-2" />
                 Subscribers
@@ -206,7 +234,7 @@ const Inbox = () => {
                     onClick={() => handleOpenMessage(message)}
                     className={cn(
                       "flex items-start gap-4 p-4 cursor-pointer table-row-hover",
-                      !message.read && "bg-primary/5"
+                      !message.isRead && "bg-primary/5"
                     )}
                   >
                     <Checkbox
@@ -222,11 +250,11 @@ const Inbox = () => {
                     />
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
-                        {!message.read && (
+                        {!message.isRead && (
                           <span className="w-2 h-2 rounded-full bg-primary shrink-0" />
                         )}
-                        <span className={cn("font-medium truncate", !message.read && "text-foreground")}>
-                          {message.name}
+                        <span className={cn("font-medium truncate", !message.isRead && "text-foreground")}>
+                          {message.senderName}
                         </span>
                         <span className="text-sm text-muted-foreground hidden sm:inline">
                           &lt;{message.email}&gt;
@@ -234,7 +262,7 @@ const Inbox = () => {
                       </div>
                       <p className={cn(
                         "text-sm mt-1 truncate",
-                        message.read ? "text-muted-foreground" : "text-foreground"
+                        message.isRead ? "text-muted-foreground" : "text-foreground"
                       )}>
                         {message.subject}
                       </p>
@@ -260,31 +288,6 @@ const Inbox = () => {
                             <Reply className="h-4 w-4 mr-2" />
                             Reply
                           </DropdownMenuItem>
-                          <DropdownMenuItem onClick={(e) => {
-                            e.stopPropagation();
-                            message.read ? markMessageUnread(message.id) : markMessageRead(message.id);
-                            toast.success(message.read ? 'Marked as unread' : 'Marked as read');
-                          }}>
-                            {message.read ? (
-                              <>
-                                <Mail className="h-4 w-4 mr-2" />
-                                Mark Unread
-                              </>
-                            ) : (
-                              <>
-                                <MailOpen className="h-4 w-4 mr-2" />
-                                Mark Read
-                              </>
-                            )}
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={(e) => {
-                            e.stopPropagation();
-                            archiveMessage(message.id);
-                            toast.success('Message archived');
-                          }}>
-                            <Archive className="h-4 w-4 mr-2" />
-                            Archive
-                          </DropdownMenuItem>
                           <DropdownMenuItem
                             className="text-destructive"
                             onClick={(e) => {
@@ -300,39 +303,6 @@ const Inbox = () => {
                       </DropdownMenu>
                     </div>
                   </motion.div>
-                ))}
-              </div>
-            )}
-          </TabsContent>
-
-          {/* Archived Tab */}
-          <TabsContent value="archived" className="mt-4">
-            {filteredMessages.length === 0 ? (
-              <EmptyState
-                icon="inbox"
-                title="No archived messages"
-                description="Archived messages will appear here."
-              />
-            ) : (
-              <div className="glass rounded-xl divide-y divide-border">
-                {filteredMessages.map((message) => (
-                  <div
-                    key={message.id}
-                    onClick={() => handleOpenMessage(message)}
-                    className="flex items-start gap-4 p-4 cursor-pointer table-row-hover"
-                  >
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="font-medium truncate">{message.name}</span>
-                      </div>
-                      <p className="text-sm text-muted-foreground mt-1 truncate">
-                        {message.subject}
-                      </p>
-                    </div>
-                    <span className="text-xs text-muted-foreground">
-                      {formatDate(message.createdAt)}
-                    </span>
-                  </div>
                 ))}
               </div>
             )}
@@ -401,7 +371,7 @@ const Inbox = () => {
               <SheetHeader>
                 <SheetTitle>{selectedMessage.subject}</SheetTitle>
                 <SheetDescription>
-                  From: {selectedMessage.name} &lt;{selectedMessage.email}&gt;
+                  From: {selectedMessage.senderName} &lt;{selectedMessage.email}&gt;
                 </SheetDescription>
               </SheetHeader>
               <div className="mt-6 space-y-4">
@@ -415,16 +385,6 @@ const Inbox = () => {
                   <Button onClick={() => handleReply(selectedMessage.email)} className="flex-1 btn-neon">
                     <Reply className="h-4 w-4 mr-2" />
                     Reply
-                  </Button>
-                  <Button
-                    variant="outline"
-                    onClick={() => {
-                      archiveMessage(selectedMessage.id);
-                      setMessageSheetOpen(false);
-                      toast.success('Message archived');
-                    }}
-                  >
-                    <Archive className="h-4 w-4" />
                   </Button>
                   <Button
                     variant="outline"

@@ -1,14 +1,73 @@
 import { motion } from 'framer-motion';
-import { Eye, MessageSquare, FolderKanban, Users } from 'lucide-react';
+import { Eye, MessageSquare, FolderKanban, Users, Loader2 } from 'lucide-react';
 import { DashboardLayout } from '@/components/admin/DashboardLayout';
 import { StatsCard } from '@/components/admin/StatsCard';
 import { VisitorChart } from '@/components/admin/VisitorChart';
 import { DeviceChart } from '@/components/admin/DeviceChart';
 import { ActivityFeed } from '@/components/admin/ActivityFeed';
-import { useAdminStore } from '@/store/adminStore';
+import { useProjects } from '@/hooks/queries/useProjects';
+import { useMessages, useSubscribers } from '@/hooks/queries/useMessages';
+
+import { useQuery } from '@tanstack/react-query';
+import { api } from '@/lib/api';
 
 const Dashboard = () => {
-  const { stats, activities } = useAdminStore();
+  const { projects, isLoading: isProjectsLoading } = useProjects();
+  const { messages, isLoading: isMessagesLoading } = useMessages();
+  const { subscribers, isLoading: isSubscribersLoading } = useSubscribers();
+
+  // Fetch real stats from backend
+  const { data: stats, isLoading: isStatsLoading } = useQuery({
+    queryKey: ['dashboard-stats'],
+    queryFn: async () => {
+      const response = await api.get('/dashboard/stats/');
+      return response.data;
+    },
+    // Fallback if endpoint fails or during loading
+    initialData: {
+        totalViews: 0,
+        viewsChange: 0,
+        totalMessages: 0,
+        messagesChange: 0,
+        totalProjects: 0,
+        projectsChange: 0,
+        totalSubscribers: 0,
+        subscribersChange: 0,
+        weeklyVisitors: [],
+        monthlyVisitors: [],
+        deviceStats: []
+    }
+  });
+
+  const isLoading = isProjectsLoading || isMessagesLoading || isSubscribersLoading || isStatsLoading;
+
+  // Activities adapted to ActivityFeed structure
+  const activities = [
+    ...(messages || []).slice(0, 5).map(m => ({
+      id: `msg-${m.id}`,
+      type: 'message',
+      title: 'New message received',
+      description: m.subject || 'Inquiry',
+      timestamp: m.createdAt,
+    })),
+    ...(projects || []).slice(0, 5).map(p => ({
+      id: `proj-${p.id}`,
+      type: 'project',
+      title: 'New project published',
+      description: p.title,
+      timestamp: p.createdAt,
+    }))
+  ].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()).slice(0, 10);
+
+  if (isLoading) {
+    return (
+        <DashboardLayout>
+            <div className="flex items-center justify-center h-[60vh]">
+            <Loader2 className="w-8 h-8 animate-spin text-primary" />
+            </div>
+        </DashboardLayout>
+    );
+  }
 
   return (
     <DashboardLayout>

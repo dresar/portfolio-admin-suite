@@ -11,16 +11,14 @@ import {
   Image as ImageIcon,
   FileText,
 } from 'lucide-react';
-import { format } from 'date-fns';
 import { DashboardLayout } from '@/components/admin/DashboardLayout';
 import { EmptyState } from '@/components/admin/EmptyState';
 import { ConfirmDialog } from '@/components/admin/ConfirmDialog';
-import { ImagePreview } from '@/components/admin/ImagePreview';
-import { useAdminStore, type Education } from '@/store/adminStore';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
+import { Textarea } from '@/components/ui/textarea';
 import {
   Dialog,
   DialogContent,
@@ -38,26 +36,21 @@ import {
 } from '@/components/ui/select';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
-import { useIsMobile } from '@/hooks/use-mobile';
-import {
-  Drawer,
-  DrawerContent,
-  DrawerDescription,
-  DrawerFooter,
-  DrawerHeader,
-  DrawerTitle,
-} from '@/components/ui/drawer';
+import { useEducations, useCreateEducation, useUpdateEducation, useDeleteEducation } from '@/hooks/queries/useResume';
+import { Education } from '@/types';
 
 const currentYear = new Date().getFullYear();
 const years = Array.from({ length: 50 }, (_, i) => currentYear - i);
 
 const EducationManager = () => {
-  const { education, addEducation, updateEducation, deleteEducation } = useAdminStore();
-  const isMobile = useIsMobile();
+  const { data: education = [], isLoading } = useEducations();
+  const createMutation = useCreateEducation();
+  const updateMutation = useUpdateEducation();
+  const deleteMutation = useDeleteEducation();
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [educationToDelete, setEducationToDelete] = useState<string | null>(null);
+  const [educationToDelete, setEducationToDelete] = useState<number | null>(null);
   const [editingEducation, setEditingEducation] = useState<Partial<Education> | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [isGalleryDragging, setIsGalleryDragging] = useState(false);
@@ -76,12 +69,13 @@ const EducationManager = () => {
             logo: '',
             attachments: [],
             gallery: [],
+            description: ''
           }
     );
     setDialogOpen(true);
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!editingEducation) return;
 
     if (!editingEducation.institution || !editingEducation.degree) {
@@ -89,20 +83,24 @@ const EducationManager = () => {
       return;
     }
 
-    if (editingEducation.id) {
-      updateEducation(editingEducation.id, editingEducation);
-      toast.success('Education updated successfully');
-    } else {
-      addEducation(editingEducation as Omit<Education, 'id'>);
-      toast.success('Education added successfully');
+    try {
+        if (editingEducation.id) {
+            await updateMutation.mutateAsync({ id: editingEducation.id, data: editingEducation });
+            toast.success('Education updated successfully');
+        } else {
+            await createMutation.mutateAsync(editingEducation);
+            toast.success('Education added successfully');
+        }
+        setDialogOpen(false);
+        setEditingEducation(null);
+    } catch (error) {
+        toast.error('Failed to save education');
     }
-    setDialogOpen(false);
-    setEditingEducation(null);
   };
 
-  const handleDelete = () => {
+  const handleDelete = async () => {
     if (educationToDelete) {
-      deleteEducation(educationToDelete);
+      await deleteMutation.mutateAsync(educationToDelete);
       toast.success('Education deleted');
       setEducationToDelete(null);
       setDeleteDialogOpen(false);
@@ -115,24 +113,18 @@ const EducationManager = () => {
       setIsDragging(false);
       setIsGalleryDragging(false);
 
-      // Simulate file upload with placeholder images
-      const mockUrls = [
-        'https://images.unsplash.com/photo-1523050854058-8df90110c9f1?w=800',
-        'https://images.unsplash.com/photo-1541339907198-e08756dedf3f?w=800',
-        'https://images.unsplash.com/photo-1523580494863-6f3031224c94?w=800',
-      ];
-
-      const randomUrl = mockUrls[Math.floor(Math.random() * mockUrls.length)];
+      // In a real implementation, we would upload the file here
+      // For now we just use a placeholder or prompt for URL
+      const url = prompt("Enter URL for " + type);
+      if (!url) return;
 
       if (type === 'logo') {
-        setEditingEducation((prev) => ({ ...prev, logo: randomUrl }));
-        toast.success('Logo uploaded (simulated)');
+        setEditingEducation((prev) => ({ ...prev, logo: url }));
       } else {
         setEditingEducation((prev) => ({
           ...prev,
-          [type]: [...(prev?.[type] || []), randomUrl],
+          [type]: [...(prev?.[type] || []), url],
         }));
-        toast.success(`File added to ${type} (simulated)`);
       }
     },
     []
@@ -146,51 +138,28 @@ const EducationManager = () => {
   };
 
   const sortedEducation = [...education].sort(
-    (a, b) => new Date(b.endDate).getTime() - new Date(a.endDate).getTime()
+    (a, b) => new Date(b.endDate || '').getTime() - new Date(a.endDate || '').getTime()
   );
+
+  if (isLoading) {
+      return <DashboardLayout><div className="flex justify-center p-8">Loading...</div></DashboardLayout>;
+  }
 
   const FormContent = () => (
     <div className="space-y-6">
       {/* Logo Upload */}
       <div className="space-y-2">
-        <Label>Institution Logo</Label>
-        <div
-          className={cn(
-            'border-2 border-dashed rounded-xl p-4 text-center transition-colors',
-            isDragging ? 'border-primary bg-primary/10' : 'border-border hover:border-primary/50'
-          )}
-          onDragOver={(e) => {
-            e.preventDefault();
-            setIsDragging(true);
-          }}
-          onDragLeave={() => setIsDragging(false)}
-          onDrop={(e) => handleDrop(e, 'logo')}
-        >
-          {editingEducation?.logo ? (
-            <div className="flex items-center justify-center gap-4">
-              <img
-                src={editingEducation.logo}
-                alt="Logo"
-                className="w-16 h-16 rounded-lg object-cover"
-              />
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setEditingEducation((prev) => ({ ...prev, logo: '' }))}
-              >
-                <X className="h-4 w-4 mr-1" />
-                Remove
-              </Button>
-            </div>
-          ) : (
-            <div className="py-4">
-              <Upload className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
-              <p className="text-sm text-muted-foreground">
-                Drag & drop logo here, or click to browse
-              </p>
-            </div>
-          )}
+        <Label>Institution Logo (URL)</Label>
+        <div className="flex gap-2">
+            <Input 
+                value={editingEducation?.logo || ''} 
+                onChange={e => setEditingEducation(prev => ({...prev, logo: e.target.value}))}
+                placeholder="https://example.com/logo.png"
+            />
         </div>
+        {editingEducation?.logo && (
+            <img src={editingEducation.logo} alt="Logo" className="h-16 w-16 object-cover rounded mt-2" />
+        )}
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -286,24 +255,36 @@ const EducationManager = () => {
         </div>
       </div>
 
+      <div className="space-y-2">
+        <Label htmlFor="description">Description</Label>
+        <Textarea
+          id="description"
+          placeholder="Description..."
+          value={editingEducation?.description || ''}
+          onChange={(e) => setEditingEducation(prev => ({ ...prev, description: e.target.value }))}
+        />
+      </div>
+
       {/* Attachments (Ijazah/Transcript) */}
       <div className="space-y-2">
         <Label className="flex items-center gap-2">
           <FileText className="h-4 w-4" />
           Attachments (Ijazah / Transcript)
         </Label>
-        <div
-          className={cn(
-            'border-2 border-dashed rounded-xl p-4 text-center transition-colors',
-            'border-border hover:border-primary/50'
-          )}
-          onDragOver={(e) => e.preventDefault()}
-          onDrop={(e) => handleDrop(e, 'attachments')}
-        >
-          <Upload className="h-6 w-6 mx-auto text-muted-foreground mb-2" />
-          <p className="text-sm text-muted-foreground">
-            Drag & drop documents here
-          </p>
+        <div className="flex gap-2">
+            <Input 
+                placeholder="Enter URL and press enter" 
+                onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                        e.preventDefault();
+                        const val = e.currentTarget.value;
+                        if (val) {
+                            setEditingEducation(prev => ({ ...prev, attachments: [...(prev?.attachments || []), val] }));
+                            e.currentTarget.value = '';
+                        }
+                    }
+                }}
+            />
         </div>
         {editingEducation?.attachments && editingEducation.attachments.length > 0 && (
           <div className="flex flex-wrap gap-2 mt-2">
@@ -334,22 +315,20 @@ const EducationManager = () => {
           <ImageIcon className="h-4 w-4" />
           Campus Gallery
         </Label>
-        <div
-          className={cn(
-            'border-2 border-dashed rounded-xl p-4 text-center transition-colors',
-            isGalleryDragging ? 'border-primary bg-primary/10' : 'border-border hover:border-primary/50'
-          )}
-          onDragOver={(e) => {
-            e.preventDefault();
-            setIsGalleryDragging(true);
-          }}
-          onDragLeave={() => setIsGalleryDragging(false)}
-          onDrop={(e) => handleDrop(e, 'gallery')}
-        >
-          <ImageIcon className="h-6 w-6 mx-auto text-muted-foreground mb-2" />
-          <p className="text-sm text-muted-foreground">
-            Drag & drop campus photos here
-          </p>
+        <div className="flex gap-2">
+            <Input 
+                placeholder="Enter URL and press enter" 
+                onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                        e.preventDefault();
+                        const val = e.currentTarget.value;
+                        if (val) {
+                            setEditingEducation(prev => ({ ...prev, gallery: [...(prev?.gallery || []), val] }));
+                            e.currentTarget.value = '';
+                        }
+                    }
+                }}
+            />
         </div>
         {editingEducation?.gallery && editingEducation.gallery.length > 0 && (
           <div className="flex flex-wrap gap-2 mt-2">
@@ -449,7 +428,7 @@ const EducationManager = () => {
                   <div className="flex flex-wrap items-center gap-2 mt-3">
                     <Badge variant="secondary" className="flex items-center gap-1">
                       <Calendar className="h-3 w-3" />
-                      {edu.startDate.split('-')[0]} - {edu.endDate.split('-')[0]}
+                      {edu.startDate.split('-')[0]} - {edu.endDate?.split('-')[0]}
                     </Badge>
                     {edu.gpa && (
                       <Badge variant="outline">GPA: {edu.gpa}</Badge>
@@ -493,50 +472,26 @@ const EducationManager = () => {
           </div>
         )}
 
-        {/* Edit Dialog/Drawer */}
-        {isMobile ? (
-          <Drawer open={dialogOpen} onOpenChange={setDialogOpen}>
-            <DrawerContent className="max-h-[90vh]">
-              <DrawerHeader>
-                <DrawerTitle>{editingEducation?.id ? 'Edit' : 'Add'} Education</DrawerTitle>
-                <DrawerDescription>
-                  {editingEducation?.id ? 'Update your education details' : 'Add a new education entry'}
-                </DrawerDescription>
-              </DrawerHeader>
-              <div className="px-4 overflow-y-auto max-h-[60vh]">
-                <FormContent />
-              </div>
-              <DrawerFooter>
-                <Button onClick={handleSave} className="btn-neon">
-                  {editingEducation?.id ? 'Save Changes' : 'Add Education'}
-                </Button>
-                <Button variant="outline" onClick={() => setDialogOpen(false)}>
-                  Cancel
-                </Button>
-              </DrawerFooter>
-            </DrawerContent>
-          </Drawer>
-        ) : (
-          <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        {/* Edit Dialog */}
+        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
             <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-              <DialogHeader>
+                <DialogHeader>
                 <DialogTitle>{editingEducation?.id ? 'Edit' : 'Add'} Education</DialogTitle>
                 <DialogDescription>
-                  {editingEducation?.id ? 'Update your education details' : 'Add a new education entry'}
+                    {editingEducation?.id ? 'Update your education details' : 'Add a new education entry'}
                 </DialogDescription>
-              </DialogHeader>
-              <FormContent />
-              <DialogFooter>
+                </DialogHeader>
+                <FormContent />
+                <DialogFooter>
                 <Button variant="outline" onClick={() => setDialogOpen(false)}>
-                  Cancel
+                    Cancel
                 </Button>
                 <Button onClick={handleSave} className="btn-neon">
-                  {editingEducation?.id ? 'Save Changes' : 'Add Education'}
+                    {editingEducation?.id ? 'Save Changes' : 'Add Education'}
                 </Button>
-              </DialogFooter>
+                </DialogFooter>
             </DialogContent>
-          </Dialog>
-        )}
+        </Dialog>
 
         {/* Delete Confirmation */}
         <ConfirmDialog

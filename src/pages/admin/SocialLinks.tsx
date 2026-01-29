@@ -14,11 +14,11 @@ import {
   Globe,
   Mail,
   Link as LinkIcon,
+  Loader2
 } from 'lucide-react';
 import { DashboardLayout } from '@/components/admin/DashboardLayout';
 import { EmptyState } from '@/components/admin/EmptyState';
 import { ConfirmDialog } from '@/components/admin/ConfirmDialog';
-import { useAdminStore, type SocialLink } from '@/store/adminStore';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -48,6 +48,8 @@ import {
   DrawerHeader,
   DrawerTitle,
 } from '@/components/ui/drawer';
+import { useSocialLinks } from '@/hooks/queries/useSettings';
+import { SocialLink } from '@/types';
 
 const socialPlatforms = [
   { value: 'github', label: 'GitHub', icon: Github, color: 'hover:bg-gray-800' },
@@ -62,17 +64,17 @@ const socialPlatforms = [
 ];
 
 const getIconComponent = (iconName: string) => {
-  const platform = socialPlatforms.find((p) => p.value === iconName);
+  const platform = socialPlatforms.find((p) => p.value === iconName || p.label.toLowerCase() === iconName?.toLowerCase());
   return platform?.icon || LinkIcon;
 };
 
 const SocialLinks = () => {
-  const { socialLinks, addSocialLink, updateSocialLink, deleteSocialLink } = useAdminStore();
+  const { socialLinks, addSocialLink, updateSocialLink, deleteSocialLink, isLoading } = useSocialLinks();
   const isMobile = useIsMobile();
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [linkToDelete, setLinkToDelete] = useState<string | null>(null);
+  const [linkToDelete, setLinkToDelete] = useState<number | null>(null);
   const [editingLink, setEditingLink] = useState<Partial<SocialLink> | null>(null);
 
   const openEditDialog = (link?: SocialLink) => {
@@ -88,7 +90,7 @@ const SocialLinks = () => {
     setDialogOpen(true);
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!editingLink) return;
 
     if (!editingLink.platform || !editingLink.url) {
@@ -106,23 +108,31 @@ const SocialLinks = () => {
       return;
     }
 
-    if (editingLink.id) {
-      updateSocialLink(editingLink.id, editingLink);
-      toast.success('Social link updated successfully');
-    } else {
-      addSocialLink(editingLink as Omit<SocialLink, 'id'>);
-      toast.success('Social link added successfully');
+    try {
+        if (editingLink.id) {
+            await updateSocialLink({ id: editingLink.id, data: editingLink });
+            toast.success('Social link updated successfully');
+        } else {
+            await addSocialLink(editingLink as Omit<SocialLink, 'id'>);
+            toast.success('Social link added successfully');
+        }
+        setDialogOpen(false);
+        setEditingLink(null);
+    } catch (error) {
+        toast.error('Failed to save social link');
     }
-    setDialogOpen(false);
-    setEditingLink(null);
   };
 
-  const handleDelete = () => {
+  const handleDelete = async () => {
     if (linkToDelete) {
-      deleteSocialLink(linkToDelete);
-      toast.success('Social link deleted');
-      setLinkToDelete(null);
-      setDeleteDialogOpen(false);
+      try {
+        await deleteSocialLink(linkToDelete);
+        toast.success('Social link deleted');
+        setLinkToDelete(null);
+        setDeleteDialogOpen(false);
+      } catch (error) {
+        toast.error('Failed to delete social link');
+      }
     }
   };
 
@@ -216,6 +226,16 @@ const SocialLinks = () => {
       )}
     </div>
   );
+  
+  if (isLoading) {
+    return (
+        <DashboardLayout>
+            <div className="flex items-center justify-center h-[60vh]">
+            <Loader2 className="w-8 h-8 animate-spin text-primary" />
+            </div>
+        </DashboardLayout>
+    );
+  }
 
   return (
     <DashboardLayout>
@@ -237,7 +257,7 @@ const SocialLinks = () => {
         </motion.div>
 
         {/* Social Links Grid */}
-        {socialLinks.length === 0 ? (
+        {(!socialLinks || socialLinks.length === 0) ? (
           <EmptyState
             icon="share-2"
             title="No social links added"
@@ -247,8 +267,8 @@ const SocialLinks = () => {
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
             {socialLinks.map((link, index) => {
-              const Icon = getIconComponent(link.icon);
-              const platform = socialPlatforms.find((p) => p.value === link.icon);
+              const Icon = getIconComponent(link.icon || 'other');
+              const platform = socialPlatforms.find((p) => p.value === link.icon || p.label === link.platform);
               
               return (
                 <motion.div

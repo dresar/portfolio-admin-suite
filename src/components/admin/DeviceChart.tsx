@@ -14,7 +14,7 @@ const deviceIcons = {
 };
 
 export function DeviceChart({ stats }: DeviceChartProps) {
-  const data = stats.deviceStats;
+  const data = Array.isArray(stats.deviceStats) ? stats.deviceStats : [];
 
   return (
     <motion.div

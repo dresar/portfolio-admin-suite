@@ -18,7 +18,6 @@ import { DashboardLayout } from '@/components/admin/DashboardLayout';
 import { EmptyState } from '@/components/admin/EmptyState';
 import { ConfirmDialog } from '@/components/admin/ConfirmDialog';
 import { ImagePreview } from '@/components/admin/ImagePreview';
-import { useAdminStore, type Certificate } from '@/store/adminStore';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -39,23 +38,18 @@ import {
 } from '@/components/ui/popover';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
-import { useIsMobile } from '@/hooks/use-mobile';
-import {
-  Drawer,
-  DrawerContent,
-  DrawerDescription,
-  DrawerFooter,
-  DrawerHeader,
-  DrawerTitle,
-} from '@/components/ui/drawer';
+import { useCertificates, useCreateCertificate, useUpdateCertificate, useDeleteCertificate } from '@/hooks/queries/useResume';
+import { Certificate } from '@/types';
 
 const CertificateManager = () => {
-  const { certificates, addCertificate, updateCertificate, deleteCertificate } = useAdminStore();
-  const isMobile = useIsMobile();
+  const { data: certificates = [], isLoading } = useCertificates();
+  const createMutation = useCreateCertificate();
+  const updateMutation = useUpdateCertificate();
+  const deleteMutation = useDeleteCertificate();
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [certificateToDelete, setCertificateToDelete] = useState<string | null>(null);
+  const [certificateToDelete, setCertificateToDelete] = useState<number | null>(null);
   const [editingCertificate, setEditingCertificate] = useState<Partial<Certificate> | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [isTestingLink, setIsTestingLink] = useState(false);
@@ -68,16 +62,17 @@ const CertificateManager = () => {
             name: '',
             issuer: '',
             issueDate: new Date().toISOString().split('T')[0],
-            expiryDate: undefined,
+            expiryDate: null,
             credentialUrl: '',
-            image: 'https://images.unsplash.com/photo-1557200134-90327ee9fafa?w=800',
+            image: '',
             verified: false,
+            credentialId: '',
           }
     );
     setDialogOpen(true);
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!editingCertificate) return;
 
     if (!editingCertificate.name || !editingCertificate.issuer) {
@@ -85,20 +80,24 @@ const CertificateManager = () => {
       return;
     }
 
-    if (editingCertificate.id) {
-      updateCertificate(editingCertificate.id, editingCertificate);
-      toast.success('Certificate updated successfully');
-    } else {
-      addCertificate(editingCertificate as Omit<Certificate, 'id'>);
-      toast.success('Certificate added successfully');
+    try {
+        if (editingCertificate.id) {
+            await updateMutation.mutateAsync({ id: editingCertificate.id, data: editingCertificate });
+            toast.success('Certificate updated successfully');
+        } else {
+            await createMutation.mutateAsync(editingCertificate);
+            toast.success('Certificate added successfully');
+        }
+        setDialogOpen(false);
+        setEditingCertificate(null);
+    } catch (error) {
+        toast.error('Failed to save certificate');
     }
-    setDialogOpen(false);
-    setEditingCertificate(null);
   };
 
-  const handleDelete = () => {
+  const handleDelete = async () => {
     if (certificateToDelete) {
-      deleteCertificate(certificateToDelete);
+      await deleteMutation.mutateAsync(certificateToDelete);
       toast.success('Certificate deleted');
       setCertificateToDelete(null);
       setDeleteDialogOpen(false);
@@ -109,16 +108,11 @@ const CertificateManager = () => {
     e.preventDefault();
     setIsDragging(false);
 
-    // Simulate file upload with placeholder images
-    const mockUrls = [
-      'https://images.unsplash.com/photo-1451187580459-43490279c0fa?w=800',
-      'https://images.unsplash.com/photo-1573164713988-8665fc963095?w=800',
-      'https://images.unsplash.com/photo-1633356122544-f134324a6cee?w=800',
-    ];
-
-    const randomUrl = mockUrls[Math.floor(Math.random() * mockUrls.length)];
-    setEditingCertificate((prev) => ({ ...prev, image: randomUrl }));
-    toast.success('Certificate image uploaded (simulated)');
+    // Prompt for URL as simulation
+    const url = prompt("Enter Image URL");
+    if (url) {
+        setEditingCertificate((prev) => ({ ...prev, image: url }));
+    }
   }, []);
 
   const testCredentialLink = async () => {
@@ -146,7 +140,7 @@ const CertificateManager = () => {
     setIsTestingLink(false);
   };
 
-  const isExpired = (expiryDate?: string) => {
+  const isExpired = (expiryDate?: string | null) => {
     if (!expiryDate) return false;
     return new Date(expiryDate) < new Date();
   };
@@ -155,11 +149,15 @@ const CertificateManager = () => {
     (a, b) => new Date(b.issueDate).getTime() - new Date(a.issueDate).getTime()
   );
 
+  if (isLoading) {
+      return <DashboardLayout><div className="flex justify-center p-8">Loading...</div></DashboardLayout>;
+  }
+
   const FormContent = () => (
     <div className="space-y-6">
       {/* Certificate Image Upload */}
       <div className="space-y-2">
-        <Label>Certificate Image</Label>
+        <Label>Certificate Image (URL)</Label>
         <div
           className={cn(
             'border-2 border-dashed rounded-xl overflow-hidden transition-colors',
@@ -189,13 +187,13 @@ const CertificateManager = () => {
               </Button>
             </div>
           ) : (
-            <div className="py-12 text-center">
+            <div className="py-12 text-center" onClick={() => {
+                const url = prompt("Enter Image URL");
+                if (url) setEditingCertificate(prev => ({...prev, image: url}));
+            }}>
               <Upload className="h-10 w-10 mx-auto text-muted-foreground mb-3" />
               <p className="text-sm text-muted-foreground">
-                Drag & drop certificate image here
-              </p>
-              <p className="text-xs text-muted-foreground mt-1">
-                PNG, JPG, or PDF up to 10MB
+                Click to add Image URL
               </p>
             </div>
           )}
@@ -286,7 +284,7 @@ const CertificateManager = () => {
               variant="ghost"
               size="sm"
               className="w-full"
-              onClick={() => setEditingCertificate((prev) => ({ ...prev, expiryDate: undefined }))}
+              onClick={() => setEditingCertificate((prev) => ({ ...prev, expiryDate: null }))}
             >
               Clear expiry date
             </Button>
@@ -338,6 +336,18 @@ const CertificateManager = () => {
             Credential verified
           </div>
         )}
+      </div>
+      
+      <div className="space-y-2">
+          <Label htmlFor="credentialId">Credential ID</Label>
+          <Input
+            id="credentialId"
+            placeholder="ID-12345"
+            value={editingCertificate?.credentialId || ''}
+            onChange={(e) =>
+              setEditingCertificate((prev) => ({ ...prev, credentialId: e.target.value }))
+            }
+          />
       </div>
     </div>
   );
@@ -464,50 +474,26 @@ const CertificateManager = () => {
           </div>
         )}
 
-        {/* Edit Dialog/Drawer */}
-        {isMobile ? (
-          <Drawer open={dialogOpen} onOpenChange={setDialogOpen}>
-            <DrawerContent className="max-h-[90vh]">
-              <DrawerHeader>
-                <DrawerTitle>{editingCertificate?.id ? 'Edit' : 'Add'} Certificate</DrawerTitle>
-                <DrawerDescription>
-                  {editingCertificate?.id ? 'Update your certification' : 'Add a new certification'}
-                </DrawerDescription>
-              </DrawerHeader>
-              <div className="px-4 overflow-y-auto max-h-[60vh]">
-                <FormContent />
-              </div>
-              <DrawerFooter>
-                <Button onClick={handleSave} className="btn-neon">
-                  {editingCertificate?.id ? 'Save Changes' : 'Add Certificate'}
-                </Button>
-                <Button variant="outline" onClick={() => setDialogOpen(false)}>
-                  Cancel
-                </Button>
-              </DrawerFooter>
-            </DrawerContent>
-          </Drawer>
-        ) : (
-          <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        {/* Edit Dialog */}
+        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
             <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-              <DialogHeader>
+                <DialogHeader>
                 <DialogTitle>{editingCertificate?.id ? 'Edit' : 'Add'} Certificate</DialogTitle>
                 <DialogDescription>
-                  {editingCertificate?.id ? 'Update your certification' : 'Add a new certification'}
+                    {editingCertificate?.id ? 'Update your certification' : 'Add a new certification'}
                 </DialogDescription>
-              </DialogHeader>
-              <FormContent />
-              <DialogFooter>
+                </DialogHeader>
+                <FormContent />
+                <DialogFooter>
                 <Button variant="outline" onClick={() => setDialogOpen(false)}>
-                  Cancel
+                    Cancel
                 </Button>
                 <Button onClick={handleSave} className="btn-neon">
-                  {editingCertificate?.id ? 'Save Changes' : 'Add Certificate'}
+                    {editingCertificate?.id ? 'Save Changes' : 'Add Certificate'}
                 </Button>
-              </DialogFooter>
+                </DialogFooter>
             </DialogContent>
-          </Dialog>
-        )}
+        </Dialog>
 
         {/* Delete Confirmation */}
         <ConfirmDialog

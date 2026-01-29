@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import {
   Save,
@@ -14,10 +14,10 @@ import {
   ListOrdered,
   AlignLeft,
   Upload,
+  Loader2
 } from 'lucide-react';
 import { Reorder } from 'framer-motion';
 import { DashboardLayout } from '@/components/admin/DashboardLayout';
-import { useAdminStore } from '@/store/adminStore';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -28,67 +28,84 @@ import { Toggle } from '@/components/ui/toggle';
 import { Separator } from '@/components/ui/separator';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { useHomeContent, useAboutContent } from '@/hooks/queries/useContent';
+import { HomeContent, AboutContent } from '@/types';
 
 const ContentEditor = () => {
-  const { settings, updateSettings } = useAdminStore();
+  const { homeContent, updateHomeContent, isLoading: isHomeLoading } = useHomeContent();
+  const { aboutContent, updateAboutContent, isLoading: isAboutLoading } = useAboutContent();
+
+  const [localHome, setLocalHome] = useState<Partial<HomeContent>>({});
+  const [localAbout, setLocalAbout] = useState<Partial<AboutContent>>({});
   
-  const [heroTitle, setHeroTitle] = useState(settings.heroTitle);
-  const [heroSubtitle, setHeroSubtitle] = useState(settings.heroSubtitle);
-  const [heroRoles, setHeroRoles] = useState(settings.heroRoles);
-  const [heroImage, setHeroImage] = useState(settings.heroImage);
-  const [aboutBio, setAboutBio] = useState(settings.aboutBio);
   const [newRole, setNewRole] = useState('');
-  const [isDragging, setIsDragging] = useState(false);
+  const [roles, setRoles] = useState<string[]>([]);
   
   // Rich text formatting states
   const [isBold, setIsBold] = useState(false);
   const [isItalic, setIsItalic] = useState(false);
 
-  const handleSave = () => {
-    updateSettings({
-      heroTitle,
-      heroSubtitle,
-      heroRoles,
-      heroImage,
-      aboutBio,
-    });
-    toast.success('Content saved successfully!');
+  useEffect(() => {
+    if (homeContent) {
+        setLocalHome(homeContent);
+        try {
+            const parsedRoles = JSON.parse(homeContent.roles_id || '[]');
+            if (Array.isArray(parsedRoles)) {
+                setRoles(parsedRoles);
+            }
+        } catch (e) {
+            setRoles([]);
+        }
+    }
+  }, [homeContent]);
+
+  useEffect(() => {
+    if (aboutContent) {
+        setLocalAbout(aboutContent);
+    }
+  }, [aboutContent]);
+
+  const handleSaveHome = async () => {
+    try {
+      await updateHomeContent({
+        ...localHome,
+        roles_id: JSON.stringify(roles),
+        // greeting_en and roles_en are auto-translated by backend usually, but we can send them if we want manual override
+      });
+      toast.success('Home content saved successfully!');
+    } catch (error) {
+      toast.error('Failed to save home content');
+    }
+  };
+
+  const handleSaveAbout = async () => {
+    try {
+      await updateAboutContent(localAbout);
+      toast.success('About content saved successfully!');
+    } catch (error) {
+      toast.error('Failed to save about content');
+    }
   };
 
   const addRole = () => {
-    if (newRole.trim() && !heroRoles.includes(newRole.trim())) {
-      setHeroRoles([...heroRoles, newRole.trim()]);
+    if (newRole.trim() && !roles.includes(newRole.trim())) {
+      setRoles([...roles, newRole.trim()]);
       setNewRole('');
     }
   };
 
   const removeRole = (roleToRemove: string) => {
-    setHeroRoles(heroRoles.filter((role) => role !== roleToRemove));
-  };
-
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragging(false);
-
-    // Simulate file upload with placeholder image
-    const mockUrls = [
-      'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=800',
-      'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=800',
-      'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=800',
-    ];
-
-    const randomUrl = mockUrls[Math.floor(Math.random() * mockUrls.length)];
-    setHeroImage(randomUrl);
-    toast.success('Hero image uploaded (simulated)');
+    setRoles(roles.filter((role) => role !== roleToRemove));
   };
 
   const applyFormatting = (type: 'bold' | 'italic' | 'list' | 'ordered') => {
     const textarea = document.getElementById('about-bio') as HTMLTextAreaElement;
     if (!textarea) return;
 
+    const currentText = localAbout.long_description_id || '';
     const start = textarea.selectionStart;
     const end = textarea.selectionEnd;
-    const selectedText = aboutBio.substring(start, end);
+    const selectedText = currentText.substring(start, end);
 
     let formattedText = '';
     let newCursorPos = start;
@@ -112,8 +129,8 @@ const ContentEditor = () => {
         break;
     }
 
-    const newBio = aboutBio.substring(0, start) + formattedText + aboutBio.substring(end);
-    setAboutBio(newBio);
+    const newBio = currentText.substring(0, start) + formattedText + currentText.substring(end);
+    setLocalAbout({ ...localAbout, long_description_id: newBio });
 
     // Set cursor position after formatting
     setTimeout(() => {
@@ -121,6 +138,16 @@ const ContentEditor = () => {
       textarea.setSelectionRange(newCursorPos, newCursorPos);
     }, 0);
   };
+
+  if (isHomeLoading || isAboutLoading) {
+    return (
+        <DashboardLayout>
+            <div className="flex items-center justify-center h-[60vh]">
+            <Loader2 className="w-8 h-8 animate-spin text-primary" />
+            </div>
+        </DashboardLayout>
+    );
+  }
 
   return (
     <DashboardLayout>
@@ -135,10 +162,6 @@ const ContentEditor = () => {
             <h1 className="text-3xl font-bold tracking-tight">Content Editor</h1>
             <p className="text-muted-foreground mt-1">Manage your hero section and about page content</p>
           </div>
-          <Button onClick={handleSave} className="btn-neon">
-            <Save className="h-4 w-4 mr-2" />
-            Save Changes
-          </Button>
         </motion.div>
 
         {/* Content Tabs */}
@@ -156,35 +179,32 @@ const ContentEditor = () => {
 
           {/* Hero Section Tab */}
           <TabsContent value="hero" className="space-y-6">
+             <div className="flex justify-end">
+                <Button onClick={handleSaveHome} className="btn-neon">
+                    <Save className="h-4 w-4 mr-2" />
+                    Save Hero Changes
+                </Button>
+            </div>
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               {/* Hero Text Content */}
               <Card className="glass border-border">
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
                     <Type className="h-5 w-5 text-primary" />
-                    Hero Text
+                    Hero Text (Indonesian)
                   </CardTitle>
                   <CardDescription>
-                    Customize the main heading and subtitle
+                    Customize the main heading and greeting
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div className="space-y-2">
-                    <Label htmlFor="heroTitle">Main Title</Label>
+                    <Label htmlFor="greeting_id">Greeting</Label>
                     <Input
-                      id="heroTitle"
-                      placeholder="Hi, I'm Alex"
-                      value={heroTitle}
-                      onChange={(e) => setHeroTitle(e.target.value)}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="heroSubtitle">Subtitle</Label>
-                    <Input
-                      id="heroSubtitle"
-                      placeholder="Building digital experiences that matter"
-                      value={heroSubtitle}
-                      onChange={(e) => setHeroSubtitle(e.target.value)}
+                      id="greeting_id"
+                      placeholder="Halo, Saya"
+                      value={localHome.greeting_id || ''}
+                      onChange={(e) => setLocalHome({ ...localHome, greeting_id: e.target.value })}
                     />
                   </div>
                 </CardContent>
@@ -202,44 +222,28 @@ const ContentEditor = () => {
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <div
-                    className={cn(
-                      'border-2 border-dashed rounded-xl overflow-hidden transition-colors',
-                      isDragging ? 'border-primary bg-primary/10' : 'border-border hover:border-primary/50'
-                    )}
-                    onDragOver={(e) => {
-                      e.preventDefault();
-                      setIsDragging(true);
-                    }}
-                    onDragLeave={() => setIsDragging(false)}
-                    onDrop={handleDrop}
-                  >
-                    {heroImage ? (
-                      <div className="relative">
+                    <div className="flex flex-col items-center gap-4">
+                        {localHome.heroImage ? (
                         <img
-                          src={heroImage}
-                          alt="Hero"
-                          className="w-full h-48 object-cover"
+                            src={localHome.heroImage}
+                            alt="Hero"
+                            className="w-full h-48 object-cover rounded-xl"
                         />
-                        <div className="absolute inset-0 bg-black/40 opacity-0 hover:opacity-100 transition-opacity flex items-center justify-center">
-                          <Button
-                            variant="secondary"
-                            onClick={() => setHeroImage('')}
-                          >
-                            <Upload className="h-4 w-4 mr-2" />
-                            Replace Image
-                          </Button>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="py-12 text-center">
-                        <Upload className="h-10 w-10 mx-auto text-muted-foreground mb-3" />
-                        <p className="text-sm text-muted-foreground">
-                          Drag & drop your hero image here
-                        </p>
-                      </div>
-                    )}
-                  </div>
+                        ) : (
+                            <div className="w-full h-48 bg-muted flex items-center justify-center rounded-xl">
+                                <span className="text-muted-foreground">No Image</span>
+                            </div>
+                        )}
+                        <Input 
+                            type="file" 
+                            onChange={(e) => {
+                                const file = e.target.files?.[0];
+                                if (file) {
+                                    setLocalHome({ ...localHome, heroImageFile: file });
+                                }
+                            }}
+                        />
+                    </div>
                 </CardContent>
               </Card>
             </div>
@@ -258,7 +262,7 @@ const ContentEditor = () => {
               <CardContent className="space-y-4">
                 <div className="flex gap-2">
                   <Input
-                    placeholder="Add a role (e.g., Full-Stack Developer)"
+                    placeholder="Add a role (e.g., Pengembang Full-Stack)"
                     value={newRole}
                     onChange={(e) => setNewRole(e.target.value)}
                     onKeyDown={(e) => e.key === 'Enter' && addRole()}
@@ -268,14 +272,14 @@ const ContentEditor = () => {
                   </Button>
                 </div>
 
-                {heroRoles.length > 0 && (
+                {roles.length > 0 && (
                   <Reorder.Group
                     axis="y"
-                    values={heroRoles}
-                    onReorder={setHeroRoles}
+                    values={roles}
+                    onReorder={setRoles}
                     className="space-y-2"
                   >
-                    {heroRoles.map((role) => (
+                    {roles.map((role) => (
                       <Reorder.Item
                         key={role}
                         value={role}
@@ -296,63 +300,43 @@ const ContentEditor = () => {
                   </Reorder.Group>
                 )}
 
-                {heroRoles.length === 0 && (
+                {roles.length === 0 && (
                   <p className="text-sm text-muted-foreground text-center py-4">
                     No roles added yet. Add your first role above.
                   </p>
                 )}
               </CardContent>
             </Card>
-
-            {/* Live Preview */}
-            <Card className="glass border-border overflow-hidden">
-              <CardHeader>
-                <CardTitle>Live Preview</CardTitle>
-                <CardDescription>See how your hero section will look</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="relative bg-gradient-to-br from-background to-muted rounded-xl p-8 min-h-[200px] flex items-center">
-                  <div className="flex items-center gap-8 w-full">
-                    {heroImage && (
-                      <div className="shrink-0">
-                        <img
-                          src={heroImage}
-                          alt="Hero Preview"
-                          className="w-32 h-32 rounded-full object-cover ring-4 ring-primary/20"
-                        />
-                      </div>
-                    )}
-                    <div className="space-y-3">
-                      <h2 className="text-2xl lg:text-4xl font-bold">{heroTitle || 'Your Title Here'}</h2>
-                      <p className="text-lg text-muted-foreground">{heroSubtitle || 'Your subtitle here'}</p>
-                      {heroRoles.length > 0 && (
-                        <div className="flex items-center gap-2 text-primary">
-                          <span className="text-lg">I'm a</span>
-                          <span className="text-lg font-semibold border-r-2 border-primary pr-1 animate-pulse">
-                            {heroRoles[0]}
-                          </span>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
           </TabsContent>
 
           {/* About Section Tab */}
           <TabsContent value="about" className="space-y-6">
+             <div className="flex justify-end">
+                <Button onClick={handleSaveAbout} className="btn-neon">
+                    <Save className="h-4 w-4 mr-2" />
+                    Save About Changes
+                </Button>
+            </div>
             <Card className="glass border-border">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <FileText className="h-5 w-5 text-primary" />
-                  About Bio
+                  About Content (Indonesian)
                 </CardTitle>
                 <CardDescription>
                   Write a compelling biography. Supports basic markdown formatting.
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
+                 <div className="space-y-2">
+                    <Label htmlFor="short_description_id">Short Description</Label>
+                    <Input
+                      id="short_description_id"
+                      value={localAbout.short_description_id || ''}
+                      onChange={(e) => setLocalAbout({ ...localAbout, short_description_id: e.target.value })}
+                    />
+                  </div>
+
                 {/* Formatting Toolbar */}
                 <div className="flex items-center gap-1 p-1 bg-muted/50 rounded-lg w-fit">
                   <Toggle
@@ -398,60 +382,41 @@ const ContentEditor = () => {
                 <Textarea
                   id="about-bio"
                   placeholder="Write your bio here... (supports **bold**, *italic*, - lists)"
-                  value={aboutBio}
-                  onChange={(e) => setAboutBio(e.target.value)}
+                  value={localAbout.long_description_id || ''}
+                  onChange={(e) => setLocalAbout({ ...localAbout, long_description_id: e.target.value })}
                   className="min-h-[300px] font-mono text-sm"
                 />
 
                 <p className="text-xs text-muted-foreground">
                   Tip: Use **text** for bold, *text* for italic, and - for bullet points
                 </p>
-              </CardContent>
-            </Card>
-
-            {/* Preview */}
-            <Card className="glass border-border">
-              <CardHeader>
-                <CardTitle>Preview</CardTitle>
-                <CardDescription>See how your about section will render</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="prose prose-invert max-w-none">
-                  {aboutBio.split('\n').map((paragraph, i) => {
-                    // Simple markdown parsing
-                    let text = paragraph;
-                    
-                    // Bold
-                    text = text.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
-                    // Italic
-                    text = text.replace(/\*(.*?)\*/g, '<em>$1</em>');
-                    // List items
-                    if (text.startsWith('- ')) {
-                      return (
-                        <div key={i} className="flex items-start gap-2 my-1">
-                          <span className="text-primary mt-1">•</span>
-                          <span dangerouslySetInnerHTML={{ __html: text.slice(2) }} />
-                        </div>
-                      );
-                    }
-                    // Numbered list
-                    const numberedMatch = text.match(/^(\d+)\.\s/);
-                    if (numberedMatch) {
-                      return (
-                        <div key={i} className="flex items-start gap-2 my-1">
-                          <span className="text-primary">{numberedMatch[1]}.</span>
-                          <span dangerouslySetInnerHTML={{ __html: text.slice(numberedMatch[0].length) }} />
-                        </div>
-                      );
-                    }
-
-                    if (!text.trim()) return <br key={i} />;
-                    
-                    return (
-                      <p key={i} className="my-2" dangerouslySetInnerHTML={{ __html: text }} />
-                    );
-                  })}
-                </div>
+                
+                 {/* About Image */}
+                 <div className="mt-4">
+                    <Label>About Image</Label>
+                    <div className="flex flex-col items-center gap-4 mt-2">
+                        {localAbout.aboutImage ? (
+                        <img
+                            src={localAbout.aboutImage}
+                            alt="About"
+                            className="w-full h-48 object-cover rounded-xl"
+                        />
+                        ) : (
+                            <div className="w-full h-48 bg-muted flex items-center justify-center rounded-xl">
+                                <span className="text-muted-foreground">No Image</span>
+                            </div>
+                        )}
+                        <Input 
+                            type="file" 
+                            onChange={(e) => {
+                                const file = e.target.files?.[0];
+                                if (file) {
+                                    setLocalAbout({ ...localAbout, aboutImageFile: file });
+                                }
+                            }}
+                        />
+                    </div>
+                 </div>
               </CardContent>
             </Card>
           </TabsContent>

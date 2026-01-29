@@ -23,6 +23,8 @@ import {
   Briefcase,
   Code2,
   Share2,
+  Newspaper,
+  Key
 } from 'lucide-react';
 import { useAdminStore } from '@/store/adminStore';
 import { cn } from '@/lib/utils';
@@ -36,10 +38,12 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { CommandDialog, CommandInput, CommandList, CommandEmpty, CommandGroup, CommandItem } from '@/components/ui/command';
 import { toast } from 'sonner';
+import { useMessages } from '@/hooks/queries/useMessages';
+import { useProfile } from '@/hooks/queries/useSettings';
+import { getPlaceholderImage } from '@/lib/placeholder';
 
 interface NavItem {
   icon: React.ElementType;
@@ -52,6 +56,7 @@ interface NavItem {
 const navItems: NavItem[] = [
   { icon: LayoutDashboard, label: 'Dashboard', href: '/admin' },
   { icon: FolderKanban, label: 'Projects', href: '/admin/projects' },
+  { icon: Newspaper, label: 'Blog', href: '/admin/blog' },
   { icon: FileText, label: 'Content', href: '/admin/content' },
   { icon: Code2, label: 'Skills', href: '/admin/skills' },
   { icon: Briefcase, label: 'Experience', href: '/admin/experience' },
@@ -59,6 +64,7 @@ const navItems: NavItem[] = [
   { icon: Award, label: 'Certificates', href: '/admin/certificates' },
   { icon: Share2, label: 'Social Links', href: '/admin/social' },
   { icon: Inbox, label: 'Inbox', href: '/admin/inbox' },
+  { icon: Key, label: 'AI Keys', href: '/admin/ai-keys' },
   { icon: Settings, label: 'Settings', href: '/admin/settings' },
 ];
 
@@ -73,21 +79,32 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
     toggleTheme, 
     sidebarCollapsed, 
     setSidebarCollapsed, 
-    profile, 
+    // Remove profile/notifications from store if we use hooks
+    // But keep theme/sidebarCollapsed in store as they are UI state
     notifications, 
-    messages,
     markNotificationRead,
     markAllNotificationsRead,
     exportAllData,
   } = useAdminStore();
+  
+  // Use hooks for data
+  const { messages } = useMessages();
+  const { profile: userProfile } = useProfile();
   
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [commandOpen, setCommandOpen] = useState(false);
   const [greeting, setGreeting] = useState('');
   const [currentTime, setCurrentTime] = useState(new Date());
 
-  const unreadMessages = messages.filter(m => !m.read && !m.archived).length;
+  const unreadMessages = messages?.filter(m => !m.isRead).length || 0;
   const unreadNotifications = notifications.filter(n => !n.read).length;
+
+  const profile = userProfile || {
+      name: 'Admin',
+      email: 'admin@example.com',
+      role: 'Administrator',
+      avatar: ''
+  };
 
   // Update time every second
   useEffect(() => {
@@ -133,8 +150,9 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
   };
 
   const handleLogout = () => {
+    localStorage.removeItem('auth_token');
+    window.location.href = '/login';
     toast.success('Logged out successfully!');
-    // In a real app, this would redirect to login
   };
 
   return (
@@ -215,7 +233,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
                     </Badge>
                   )}
                   {sidebarCollapsed && (
-                    <div className="absolute left-full ml-2 px-2 py-1 bg-popover text-popover-foreground text-sm rounded-md opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all whitespace-nowrap shadow-lg border">
+                    <div className="absolute left-full ml-2 px-2 py-1 bg-popover text-popover-foreground text-sm rounded-md opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all whitespace-nowrap shadow-lg border z-50">
                       {item.label}
                     </div>
                   )}
@@ -231,11 +249,20 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
             "flex items-center gap-3 p-2 rounded-lg",
             sidebarCollapsed && "justify-center"
           )}>
-            <img
-              src={profile.avatar}
-              alt={profile.name}
-              className="w-9 h-9 rounded-full object-cover ring-2 ring-primary/20"
-            />
+            {profile.heroImage ? (
+                <img
+                src={profile.heroImage}
+                alt={profile.fullName || 'Admin'}
+                className="w-9 h-9 rounded-full object-cover ring-2 ring-primary/20"
+                referrerPolicy="no-referrer"
+                crossOrigin="anonymous"
+                onError={(e) => { e.currentTarget.src = getPlaceholderImage(36, 36, 'Admin'); }}
+                />
+            ) : (
+                <div className="w-9 h-9 rounded-full bg-secondary flex items-center justify-center">
+                    <User className="w-5 h-5 text-muted-foreground" />
+                </div>
+            )}
             <AnimatePresence mode="wait">
               {!sidebarCollapsed && (
                 <motion.div
@@ -244,8 +271,8 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
                   exit={{ opacity: 0 }}
                   className="flex-1 min-w-0"
                 >
-                  <p className="text-sm font-medium truncate">{profile.name}</p>
-                  <p className="text-xs text-muted-foreground truncate">{profile.role}</p>
+                  <p className="text-sm font-medium truncate">{profile.fullName || 'Admin'}</p>
+                  <p className="text-xs text-muted-foreground truncate">{typeof profile.role === 'string' ? profile.role : 'Administrator'}</p>
                 </motion.div>
               )}
             </AnimatePresence>
@@ -312,14 +339,23 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
 
               <div className="p-3 border-t border-sidebar-border">
                 <div className="flex items-center gap-3 p-2">
-                  <img
-                    src={profile.avatar}
-                    alt={profile.name}
-                    className="w-9 h-9 rounded-full object-cover ring-2 ring-primary/20"
-                  />
+                  {profile.heroImage ? (
+                    <img
+                        src={profile.heroImage}
+                        alt={profile.fullName || 'Admin'}
+                        className="w-9 h-9 rounded-full object-cover ring-2 ring-primary/20"
+                        referrerPolicy="no-referrer"
+                        crossOrigin="anonymous"
+                        onError={(e) => { e.currentTarget.src = getPlaceholderImage(36, 36, 'Admin'); }}
+                    />
+                    ) : (
+                    <div className="w-9 h-9 rounded-full bg-secondary flex items-center justify-center">
+                        <User className="w-5 h-5 text-muted-foreground" />
+                    </div>
+                    )}
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium truncate">{profile.name}</p>
-                    <p className="text-xs text-muted-foreground truncate">{profile.role}</p>
+                    <p className="text-sm font-medium truncate">{profile.fullName || 'Admin'}</p>
+                    <p className="text-xs text-muted-foreground truncate">{typeof profile.role === 'string' ? profile.role : 'Administrator'}</p>
                   </div>
                 </div>
               </div>
@@ -437,18 +473,27 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" size="icon" className="relative">
-                  <img
-                    src={profile.avatar}
-                    alt={profile.name}
-                    className="h-8 w-8 rounded-full object-cover ring-2 ring-primary/20"
-                  />
+                  {profile.heroImage ? (
+                    <img
+                        src={profile.heroImage}
+                        alt={profile.fullName || 'Admin'}
+                        className="h-8 w-8 rounded-full object-cover ring-2 ring-primary/20"
+                        referrerPolicy="no-referrer"
+                        crossOrigin="anonymous"
+                        onError={(e) => { e.currentTarget.src = getPlaceholderImage(32, 32, 'Admin'); }}
+                    />
+                    ) : (
+                    <div className="h-8 w-8 rounded-full bg-secondary flex items-center justify-center">
+                        <User className="h-4 w-4 text-muted-foreground" />
+                    </div>
+                    )}
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-56">
                 <DropdownMenuLabel>
                   <div>
-                    <p className="font-medium">{profile.name}</p>
-                    <p className="text-xs text-muted-foreground">{profile.email}</p>
+                    <p className="font-medium">{profile.fullName || 'Admin'}</p>
+                    <p className="text-xs text-muted-foreground">{profile.email || 'admin@example.com'}</p>
                   </div>
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
@@ -514,6 +559,9 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
           </CommandGroup>
         </CommandList>
       </CommandDialog>
+
+      {/* AI Floating Assistant */}
+      <FloatingAssistant />
     </div>
   );
 }

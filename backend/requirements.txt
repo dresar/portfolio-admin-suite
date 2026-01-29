@@ -1,0 +1,26 @@
+asgiref>=3.8.0
+Django>=5.0.0
+django-cors-headers>=4.3.0
+djangorestframework>=3.15.0
+python-dotenv>=1.0.0
+pytz>=2024.1
+sqlparse>=0.4.4
+typing_extensions>=4.10.0
+Pillow>=10.2.0
+whitenoise>=6.6.0
+gunicorn>=21.2.0
+deep-translator>=1.11.0
+requests>=2.31.0
+urllib3>=2.2.0
+
+# Database Drivers
+PyMySQL>=1.1.1
+cryptography>=42.0.0
+
+# AI & LLM
+google-generativeai>=0.3.0
+groq>=0.4.0
+
+# Security & Auth
+django-otp>=1.5.0
+qrcode>=7.4.2

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import {
   User,
@@ -10,9 +10,9 @@ import {
   Plus,
   Trash2,
   ExternalLink,
+  Loader2
 } from 'lucide-react';
 import { DashboardLayout } from '@/components/admin/DashboardLayout';
-import { useAdminStore } from '@/store/adminStore';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -29,6 +29,8 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { toast } from 'sonner';
+import { useProfile, useSiteSettings, useSocialLinks } from '@/hooks/queries/useSettings';
+import { Profile, SiteSettings } from '@/types';
 
 const socialIcons = [
   { value: 'github', label: 'GitHub' },
@@ -51,44 +53,70 @@ const accentColors = [
 ];
 
 const Settings = () => {
-  const {
-    settings,
-    profile,
-    socialLinks,
-    updateSettings,
-    updateProfile,
-    addSocialLink,
-    updateSocialLink,
-    deleteSocialLink,
-  } = useAdminStore();
+  const { profile, updateProfile, isLoading: isProfileLoading } = useProfile();
+  const { settings, updateSettings, isLoading: isSettingsLoading } = useSiteSettings();
+  const { socialLinks, addSocialLink, deleteSocialLink, isLoading: isSocialLoading } = useSocialLinks();
 
-  const [localProfile, setLocalProfile] = useState(profile);
-  const [localSettings, setLocalSettings] = useState(settings);
+  const [localProfile, setLocalProfile] = useState<Partial<Profile>>({});
+  const [localSettings, setLocalSettings] = useState<Partial<SiteSettings>>({});
   const [newSocialLink, setNewSocialLink] = useState({ platform: '', url: '', icon: '' });
 
-  const handleSaveProfile = () => {
-    updateProfile(localProfile);
-    toast.success('Profile updated successfully');
+  // Sync data to local state
+  useEffect(() => {
+    if (profile) setLocalProfile(profile);
+  }, [profile]);
+
+  useEffect(() => {
+    if (settings) setLocalSettings(settings);
+  }, [settings]);
+
+  const handleSaveProfile = async () => {
+    try {
+      await updateProfile(localProfile);
+      toast.success('Profile updated successfully');
+    } catch (error) {
+      toast.error('Failed to update profile');
+    }
   };
 
-  const handleSaveSettings = () => {
-    updateSettings(localSettings);
-    toast.success('Settings saved successfully');
+  const handleSaveSettings = async () => {
+    try {
+      await updateSettings(localSettings);
+      toast.success('Settings saved successfully');
+    } catch (error) {
+      toast.error('Failed to save settings');
+    }
   };
 
-  const handleAddSocialLink = () => {
+  const handleAddSocialLink = async () => {
     if (!newSocialLink.platform || !newSocialLink.url) {
       toast.error('Please fill in all fields');
       return;
     }
-    addSocialLink({
-      platform: newSocialLink.platform,
-      url: newSocialLink.url,
-      icon: newSocialLink.icon || newSocialLink.platform.toLowerCase(),
-    });
-    setNewSocialLink({ platform: '', url: '', icon: '' });
-    toast.success('Social link added');
+    try {
+      await addSocialLink({
+        platform: newSocialLink.platform,
+        url: newSocialLink.url,
+        icon: newSocialLink.icon || newSocialLink.platform.toLowerCase(),
+      });
+      setNewSocialLink({ platform: '', url: '', icon: '' });
+      toast.success('Social link added');
+    } catch (error) {
+      toast.error('Failed to add social link');
+    }
   };
+
+  const isLoading = isProfileLoading || isSettingsLoading || isSocialLoading;
+
+  if (isLoading) {
+    return (
+      <DashboardLayout>
+        <div className="flex items-center justify-center h-[60vh]">
+          <Loader2 className="w-8 h-8 animate-spin text-primary" />
+        </div>
+      </DashboardLayout>
+    );
+  }
 
   return (
     <DashboardLayout>
@@ -138,30 +166,42 @@ const Settings = () => {
                   <CardDescription>Update your admin profile information</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-6">
+                  {/* Hero Image */}
                   <div className="flex items-center gap-6">
-                    <img
-                      src={localProfile.avatar}
-                      alt={localProfile.name}
-                      className="w-20 h-20 rounded-full object-cover ring-4 ring-primary/20"
-                    />
+                    {localProfile.heroImage ? (
+                        <img
+                        src={localProfile.heroImage}
+                        alt="Hero"
+                        className="w-20 h-20 rounded-full object-cover ring-4 ring-primary/20"
+                        />
+                    ) : (
+                        <div className="w-20 h-20 rounded-full bg-secondary flex items-center justify-center">
+                            <User className="w-10 h-10 text-muted-foreground" />
+                        </div>
+                    )}
                     <div className="space-y-2 flex-1">
-                      <Label htmlFor="avatar">Avatar URL</Label>
+                      <Label htmlFor="heroImage">Hero Image</Label>
                       <Input
-                        id="avatar"
-                        value={localProfile.avatar}
-                        onChange={(e) => setLocalProfile({ ...localProfile, avatar: e.target.value })}
-                        placeholder="https://example.com/avatar.jpg"
+                        id="heroImage"
+                        type="file"
+                        onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) {
+                                setLocalProfile({ ...localProfile, heroImageFile: file });
+                            }
+                        }}
                       />
+                      <p className="text-xs text-muted-foreground">Upload a new hero image</p>
                     </div>
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="space-y-2">
-                      <Label htmlFor="name">Name</Label>
+                      <Label htmlFor="fullName">Full Name</Label>
                       <Input
-                        id="name"
-                        value={localProfile.name}
-                        onChange={(e) => setLocalProfile({ ...localProfile, name: e.target.value })}
+                        id="fullName"
+                        value={localProfile.fullName || ''}
+                        onChange={(e) => setLocalProfile({ ...localProfile, fullName: e.target.value })}
                       />
                     </div>
                     <div className="space-y-2">
@@ -169,19 +209,59 @@ const Settings = () => {
                       <Input
                         id="email"
                         type="email"
-                        value={localProfile.email}
+                        value={localProfile.email || ''}
                         onChange={(e) => setLocalProfile({ ...localProfile, email: e.target.value })}
                       />
                     </div>
                   </div>
 
-                  <div className="space-y-2">
-                    <Label htmlFor="role">Role</Label>
-                    <Input
-                      id="role"
-                      value={localProfile.role}
-                      onChange={(e) => setLocalProfile({ ...localProfile, role: e.target.value })}
-                    />
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                     <div className="space-y-2">
+                      <Label htmlFor="role">Role (JSON or String)</Label>
+                      <Input
+                        id="role"
+                        value={localProfile.role || ''}
+                        onChange={(e) => setLocalProfile({ ...localProfile, role: e.target.value })}
+                        placeholder='["Developer", "Designer"]'
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="location">Location</Label>
+                      <Input
+                        id="location"
+                        value={localProfile.location || ''}
+                        onChange={(e) => setLocalProfile({ ...localProfile, location: e.target.value })}
+                      />
+                    </div>
+                  </div>
+
+                   <div className="space-y-2">
+                      <Label htmlFor="bio">Bio</Label>
+                      <Textarea
+                        id="bio"
+                        value={localProfile.bio || ''}
+                        onChange={(e) => setLocalProfile({ ...localProfile, bio: e.target.value })}
+                        rows={3}
+                      />
+                  </div>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                        <Label htmlFor="resumeUrl">Resume URL</Label>
+                        <Input
+                            id="resumeUrl"
+                            value={localProfile.resumeUrl || ''}
+                            onChange={(e) => setLocalProfile({ ...localProfile, resumeUrl: e.target.value })}
+                        />
+                    </div>
+                     <div className="space-y-2">
+                        <Label htmlFor="phone">Phone</Label>
+                        <Input
+                            id="phone"
+                            value={localProfile.phone || ''}
+                            onChange={(e) => setLocalProfile({ ...localProfile, phone: e.target.value })}
+                        />
+                    </div>
                   </div>
 
                   <Button onClick={handleSaveProfile} className="btn-neon">
@@ -206,42 +286,35 @@ const Settings = () => {
                 </CardHeader>
                 <CardContent className="space-y-6">
                   <div className="space-y-2">
-                    <Label htmlFor="siteName">Site Name</Label>
+                    <Label htmlFor="seoTitle">Site Title (SEO)</Label>
                     <Input
-                      id="siteName"
-                      value={localSettings.siteName}
-                      onChange={(e) => setLocalSettings({ ...localSettings, siteName: e.target.value })}
+                      id="seoTitle"
+                      value={localSettings.seoTitle || ''}
+                      onChange={(e) => setLocalSettings({ ...localSettings, seoTitle: e.target.value })}
                     />
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="siteDescription">Meta Description</Label>
+                    <Label htmlFor="seoDesc">Meta Description</Label>
                     <Textarea
-                      id="siteDescription"
-                      value={localSettings.siteDescription}
-                      onChange={(e) => setLocalSettings({ ...localSettings, siteDescription: e.target.value })}
+                      id="seoDesc"
+                      value={localSettings.seoDesc || ''}
+                      onChange={(e) => setLocalSettings({ ...localSettings, seoDesc: e.target.value })}
                       rows={3}
                     />
                     <p className="text-xs text-muted-foreground">
-                      {localSettings.siteDescription.length}/160 characters
+                      {(localSettings.seoDesc || '').length}/160 characters
                     </p>
                   </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="metaKeywords">Keywords (comma-separated)</Label>
+                  
+                   <div className="space-y-2">
+                    <Label htmlFor="cdnUrl">CDN URL</Label>
                     <Input
-                      id="metaKeywords"
-                      value={localSettings.metaKeywords.join(', ')}
-                      onChange={(e) => setLocalSettings({
-                        ...localSettings,
-                        metaKeywords: e.target.value.split(',').map(k => k.trim()).filter(Boolean)
-                      })}
+                      id="cdnUrl"
+                      value={localSettings.cdn_url || ''}
+                      onChange={(e) => setLocalSettings({ ...localSettings, cdn_url: e.target.value })}
+                      placeholder="https://cdn.example.com"
                     />
-                    <div className="flex flex-wrap gap-2 mt-2">
-                      {localSettings.metaKeywords.map((keyword) => (
-                        <Badge key={keyword} variant="secondary">{keyword}</Badge>
-                      ))}
-                    </div>
                   </div>
 
                   <Button onClick={handleSaveSettings} className="btn-neon">
@@ -268,7 +341,7 @@ const Settings = () => {
                 <CardContent className="space-y-6">
                   {/* Existing Links */}
                   <div className="space-y-3">
-                    {socialLinks.map((link) => (
+                    {socialLinks?.map((link) => (
                       <div
                         key={link.id}
                         className="flex items-center gap-4 p-4 bg-muted/50 rounded-lg"
@@ -356,33 +429,15 @@ const Settings = () => {
                   <div className="space-y-4">
                     <Label>Default Theme</Label>
                     <div className="flex gap-4">
-                      {(['dark', 'light', 'system'] as const).map((theme) => (
+                      {(['dark', 'light'] as const).map((theme) => (
                         <Button
                           key={theme}
-                          variant={localSettings.defaultTheme === theme ? 'default' : 'outline'}
-                          onClick={() => setLocalSettings({ ...localSettings, defaultTheme: theme })}
+                          variant={localSettings.theme === theme ? 'default' : 'outline'}
+                          onClick={() => setLocalSettings({ ...localSettings, theme })}
                           className="capitalize"
                         >
                           {theme}
                         </Button>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div className="space-y-4">
-                    <Label>Accent Color</Label>
-                    <div className="flex flex-wrap gap-3">
-                      {accentColors.map((color) => (
-                        <button
-                          key={color.value}
-                          onClick={() => setLocalSettings({ ...localSettings, accentColor: color.value })}
-                          className={`w-10 h-10 rounded-full ${color.class} transition-transform hover:scale-110 ${
-                            localSettings.accentColor === color.value
-                              ? 'ring-4 ring-offset-2 ring-offset-background ring-white/50'
-                              : ''
-                          }`}
-                          title={color.label}
-                        />
                       ))}
                     </div>
                   </div>
@@ -416,13 +471,29 @@ const Settings = () => {
                       </p>
                     </div>
                     <Switch
-                      checked={localSettings.maintenanceMode}
+                      checked={localSettings.maintenanceMode || false}
                       onCheckedChange={(checked) => {
                         setLocalSettings({ ...localSettings, maintenanceMode: checked });
-                        updateSettings({ maintenanceMode: checked });
-                        toast.success(checked ? 'Maintenance mode enabled' : 'Maintenance mode disabled');
+                        // Immediate update for switch usually better UX, but we can stick to save button or auto-save
+                        // Here we just update local state, user must click Save
                       }}
                     />
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <Label htmlFor="aiProvider">AI Provider</Label>
+                    <Select
+                        value={localSettings.ai_provider || 'gemini'}
+                        onValueChange={(v: 'gemini' | 'groq') => setLocalSettings({ ...localSettings, ai_provider: v })}
+                    >
+                        <SelectTrigger>
+                            <SelectValue placeholder="Select AI Provider" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="gemini">Google Gemini</SelectItem>
+                            <SelectItem value="groq">Groq</SelectItem>
+                        </SelectContent>
+                    </Select>
                   </div>
 
                   {localSettings.maintenanceMode && (
@@ -432,41 +503,6 @@ const Settings = () => {
                       </p>
                     </div>
                   )}
-
-                  <div className="border-t pt-6">
-                    <h4 className="font-medium mb-4">Hero Section</h4>
-                    <div className="space-y-4">
-                      <div className="space-y-2">
-                        <Label>Hero Title</Label>
-                        <Input
-                          value={localSettings.heroTitle}
-                          onChange={(e) => setLocalSettings({ ...localSettings, heroTitle: e.target.value })}
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label>Hero Subtitle</Label>
-                        <Input
-                          value={localSettings.heroSubtitle}
-                          onChange={(e) => setLocalSettings({ ...localSettings, heroSubtitle: e.target.value })}
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label>Typing Roles (comma-separated)</Label>
-                        <Input
-                          value={localSettings.heroRoles.join(', ')}
-                          onChange={(e) => setLocalSettings({
-                            ...localSettings,
-                            heroRoles: e.target.value.split(',').map(r => r.trim()).filter(Boolean)
-                          })}
-                        />
-                        <div className="flex flex-wrap gap-2 mt-2">
-                          {localSettings.heroRoles.map((role) => (
-                            <Badge key={role} className="badge-primary">{role}</Badge>
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
 
                   <Button onClick={handleSaveSettings} className="btn-neon">
                     <Save className="h-4 w-4 mr-2" />

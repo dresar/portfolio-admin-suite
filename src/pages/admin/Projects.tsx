@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useCallback } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { motion, Reorder } from 'framer-motion';
 import {
   Plus,
@@ -7,7 +7,6 @@ import {
   Trash2,
   Edit,
   Eye,
-  Star,
   MoreHorizontal,
   ExternalLink,
   Github,
@@ -24,7 +23,6 @@ import { DashboardLayout } from '@/components/admin/DashboardLayout';
 import { EmptyState } from '@/components/admin/EmptyState';
 import { ConfirmDialog } from '@/components/admin/ConfirmDialog';
 import { ImagePreview } from '@/components/admin/ImagePreview';
-import { useAdminStore, type Project } from '@/store/adminStore';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -56,8 +54,10 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { useProjects, useCreateProject, useUpdateProject, useDeleteProject } from '@/hooks/queries/useProjects';
+import { Project } from '@/types';
 
-type SortField = 'title' | 'createdAt' | 'status' | 'views';
+type SortField = 'title' | 'created_at' | 'is_published' | 'views_count';
 type SortDirection = 'asc' | 'desc';
 
 // Custom debounce hook
@@ -78,30 +78,24 @@ function useDebounce<T>(value: T, delay: number): T {
 }
 
 const Projects = () => {
-  const {
-    projects,
-    addProject,
-    updateProject,
-    deleteProject,
-    deleteProjects,
-    toggleProjectStatus,
-    toggleProjectFeatured,
-    reorderProjects,
-  } = useAdminStore();
+  const { data: projects = [], isLoading } = useProjects();
+  const createProjectMutation = useCreateProject();
+  const updateProjectMutation = useUpdateProject();
+  const deleteProjectMutation = useDeleteProject();
 
   const [searchQuery, setSearchQuery] = useState('');
   const debouncedSearch = useDebounce(searchQuery, 300);
   const [statusFilter, setStatusFilter] = useState<'all' | 'published' | 'draft'>('all');
-  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [projectToDelete, setProjectToDelete] = useState<string | null>(null);
+  const [projectToDelete, setProjectToDelete] = useState<number | null>(null);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [editingProject, setEditingProject] = useState<Partial<Project> | null>(null);
-  const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [copiedId, setCopiedId] = useState<number | null>(null);
   const [reorderMode, setReorderMode] = useState(false);
 
   // Sorting state
-  const [sortField, setSortField] = useState<SortField>('createdAt');
+  const [sortField, setSortField] = useState<SortField>('created_at');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
 
   // Pagination state
@@ -133,9 +127,13 @@ const Projects = () => {
     let result = projects.filter((p) => {
       const matchesSearch =
         p.title.toLowerCase().includes(debouncedSearch.toLowerCase()) ||
-        p.description.toLowerCase().includes(debouncedSearch.toLowerCase()) ||
-        p.tags.some((t) => t.toLowerCase().includes(debouncedSearch.toLowerCase()));
-      const matchesStatus = statusFilter === 'all' || p.status === statusFilter;
+        p.content.toLowerCase().includes(debouncedSearch.toLowerCase()) ||
+        (p.tech || []).some((t) => t.toLowerCase().includes(debouncedSearch.toLowerCase()));
+      
+      const isPublished = p.is_published;
+      const matchesStatus = statusFilter === 'all' || 
+                            (statusFilter === 'published' && isPublished) ||
+                            (statusFilter === 'draft' && !isPublished);
       return matchesSearch && matchesStatus;
     });
 
@@ -146,14 +144,14 @@ const Projects = () => {
         case 'title':
           comparison = a.title.localeCompare(b.title);
           break;
-        case 'createdAt':
+        case 'created_at':
           comparison = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
           break;
-        case 'status':
-          comparison = a.status.localeCompare(b.status);
+        case 'is_published':
+          comparison = (a.is_published === b.is_published) ? 0 : a.is_published ? 1 : -1;
           break;
-        case 'views':
-          comparison = a.views - b.views;
+        case 'views_count':
+          comparison = (a.views_count || 0) - (b.views_count || 0);
           break;
         default:
           comparison = a.order - b.order;
@@ -180,60 +178,87 @@ const Projects = () => {
     setSelectedIds(checked ? paginatedProjects.map((p) => p.id) : []);
   };
 
-  const handleSelect = (id: string, checked: boolean) => {
+  const handleSelect = (id: number, checked: boolean) => {
     setSelectedIds((prev) => (checked ? [...prev, id] : prev.filter((i) => i !== id)));
   };
 
-  const handleDeleteSelected = () => {
-    deleteProjects(selectedIds);
+  const handleDeleteSelected = async () => {
+    for (const id of selectedIds) {
+      await deleteProjectMutation.mutateAsync(id);
+    }
     setSelectedIds([]);
     setDeleteDialogOpen(false);
     toast.success(`${selectedIds.length} project(s) deleted`);
   };
 
-  const handleDeleteSingle = () => {
+  const handleDeleteSingle = async () => {
     if (projectToDelete) {
-      deleteProject(projectToDelete);
+      await deleteProjectMutation.mutateAsync(projectToDelete);
       setProjectToDelete(null);
       toast.success('Project deleted');
     }
   };
 
-  const handleSaveProject = () => {
+  const handleSaveProject = async () => {
     if (!editingProject) return;
 
-    if (editingProject.id) {
-      updateProject(editingProject.id, editingProject);
-      toast.success('Project updated successfully');
-    } else {
-      addProject({
-        title: editingProject.title || 'Untitled Project',
-        description: editingProject.description || '',
-        image: editingProject.image || 'https://images.unsplash.com/photo-1555066931-4365d14bab8c?w=800',
-        tags: editingProject.tags || [],
-        status: editingProject.status || 'draft',
-        featured: editingProject.featured || false,
-        views: 0,
-        liveUrl: editingProject.liveUrl,
-        githubUrl: editingProject.githubUrl,
-      });
-      toast.success('Project created successfully');
+    try {
+      if (editingProject.id) {
+        await updateProjectMutation.mutateAsync({ id: editingProject.id, data: editingProject });
+        toast.success('Project updated successfully');
+      } else {
+        await createProjectMutation.mutateAsync({
+            ...editingProject,
+            order: 0,
+            views_count: 0,
+            slug: editingProject.title?.toLowerCase().replace(/\s+/g, '-') || 'new-project',
+        });
+        toast.success('Project created successfully');
+      }
+      setEditDialogOpen(false);
+      setEditingProject(null);
+    } catch (error) {
+      console.error(error);
+      toast.error('Failed to save project');
     }
-    setEditDialogOpen(false);
-    setEditingProject(null);
   };
 
-  const handleCopyId = (id: string) => {
-    navigator.clipboard.writeText(id);
+  const handleCopyId = (id: number) => {
+    navigator.clipboard.writeText(id.toString());
     setCopiedId(id);
     setTimeout(() => setCopiedId(null), 2000);
     toast.success('ID copied to clipboard');
   };
 
   const openEditDialog = (project?: Project) => {
-    setEditingProject(project ? { ...project } : { tags: [], status: 'draft', featured: false });
+    if (project) {
+        setEditingProject({ ...project });
+    } else {
+        setEditingProject({
+            tech: [],
+            is_published: false,
+            demo_urls: [],
+            repo_urls: []
+        });
+    }
     setEditDialogOpen(true);
   };
+
+  const toggleProjectStatus = async (project: Project) => {
+      try {
+          await updateProjectMutation.mutateAsync({
+              id: project.id,
+              data: { is_published: !project.is_published }
+          });
+          toast.success(`Project ${!project.is_published ? 'published' : 'unpublished'}`);
+      } catch (error) {
+          toast.error('Failed to update status');
+      }
+  };
+
+  if (isLoading) {
+      return <DashboardLayout><div className="flex justify-center p-8">Loading projects...</div></DashboardLayout>;
+  }
 
   return (
     <DashboardLayout>
@@ -328,7 +353,11 @@ const Projects = () => {
             <Reorder.Group
               axis="y"
               values={filteredAndSortedProjects}
-              onReorder={(newOrder) => reorderProjects(newOrder.map((p, i) => ({ ...p, order: i + 1 })))}
+              onReorder={(newOrder) => {
+                  // Reorder implementation required in backend if strictly needed
+                  // For now just local reorder logic would be complex with pagination
+                  // Maybe just show toast "Reordering..."
+              }}
               className="space-y-2"
             >
               {filteredAndSortedProjects.map((project) => (
@@ -339,16 +368,16 @@ const Projects = () => {
                 >
                   <GripVertical className="h-5 w-5 text-muted-foreground" />
                   <img
-                    src={project.image}
+                    src={project.cover_image || ''}
                     alt={project.title}
                     className="w-12 h-12 rounded-lg object-cover"
                   />
                   <div className="flex-1">
                     <p className="font-medium">{project.title}</p>
-                    <p className="text-sm text-muted-foreground">{project.tags.slice(0, 3).join(', ')}</p>
+                    <p className="text-sm text-muted-foreground">{project.tech_stack?.slice(0, 3).join(', ')}</p>
                   </div>
-                  <Badge className={project.status === 'published' ? 'badge-success' : 'badge-muted'}>
-                    {project.status}
+                  <Badge className={project.is_published ? 'badge-success' : 'badge-muted'}>
+                    {project.is_published ? 'published' : 'draft'}
                   </Badge>
                 </Reorder.Item>
               ))}
@@ -380,22 +409,21 @@ const Projects = () => {
                         Project {getSortIcon('title')}
                       </button>
                     </th>
-                    <th className="p-4 text-left text-sm font-medium text-muted-foreground">Tags</th>
+                    <th className="p-4 text-left text-sm font-medium text-muted-foreground">Tech Stack</th>
                     <th className="p-4 text-left">
                       <button
-                        onClick={() => handleSort('status')}
+                        onClick={() => handleSort('is_published')}
                         className="flex items-center text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
                       >
-                        Status {getSortIcon('status')}
+                        Status {getSortIcon('is_published')}
                       </button>
                     </th>
-                    <th className="p-4 text-left text-sm font-medium text-muted-foreground">Featured</th>
                     <th className="p-4 text-left">
                       <button
-                        onClick={() => handleSort('views')}
+                        onClick={() => handleSort('views_count')}
                         className="flex items-center text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
                       >
-                        Views {getSortIcon('views')}
+                        Views {getSortIcon('views_count')}
                       </button>
                     </th>
                     <th className="p-4 text-left text-sm font-medium text-muted-foreground">Actions</th>
@@ -416,7 +444,7 @@ const Projects = () => {
                       <td className="p-4">
                         <div className="flex items-center gap-3">
                           <ImagePreview
-                            src={project.image}
+                            src={project.cover_image || ''}
                             alt={project.title}
                             className="w-12 h-12 rounded-lg"
                           />
@@ -438,45 +466,26 @@ const Projects = () => {
                       </td>
                       <td className="p-4">
                         <div className="flex flex-wrap gap-1">
-                          {project.tags.slice(0, 3).map((tag) => (
+                          {project.tech?.slice(0, 3).map((tag) => (
                             <Badge key={tag} variant="secondary" className="text-xs">
                               {tag}
                             </Badge>
                           ))}
-                          {project.tags.length > 3 && (
+                          {project.tech && project.tech.length > 3 && (
                             <Badge variant="secondary" className="text-xs">
-                              +{project.tags.length - 3}
+                              +{project.tech.length - 3}
                             </Badge>
                           )}
                         </div>
                       </td>
                       <td className="p-4">
                         <Switch
-                          checked={project.status === 'published'}
-                          onCheckedChange={() => {
-                            toggleProjectStatus(project.id);
-                            toast.success(`Project ${project.status === 'published' ? 'unpublished' : 'published'}`);
-                          }}
+                          checked={project.is_published}
+                          onCheckedChange={() => toggleProjectStatus(project)}
                         />
                       </td>
                       <td className="p-4">
-                        <button
-                          onClick={() => {
-                            toggleProjectFeatured(project.id);
-                            toast.success(`Project ${project.featured ? 'unfeatured' : 'featured'}`);
-                          }}
-                          className={cn(
-                            "p-2 rounded-lg transition-colors",
-                            project.featured
-                              ? "bg-warning/20 text-warning"
-                              : "hover:bg-muted text-muted-foreground"
-                          )}
-                        >
-                          <Star className={cn("h-5 w-5", project.featured && "fill-current")} />
-                        </button>
-                      </td>
-                      <td className="p-4">
-                        <span className="text-sm">{project.views.toLocaleString()}</span>
+                        <span className="text-sm">{(project.views_count || 0).toLocaleString()}</span>
                       </td>
                       <td className="p-4">
                         <DropdownMenu>
@@ -494,17 +503,17 @@ const Projects = () => {
                               <Eye className="h-4 w-4 mr-2" />
                               Preview
                             </DropdownMenuItem>
-                            {project.liveUrl && (
+                            {project.demo_urls && project.demo_urls.length > 0 && (
                               <DropdownMenuItem asChild>
-                                <a href={project.liveUrl} target="_blank" rel="noopener noreferrer">
+                                <a href={project.demo_urls[0]} target="_blank" rel="noopener noreferrer">
                                   <ExternalLink className="h-4 w-4 mr-2" />
                                   View Live
                                 </a>
                               </DropdownMenuItem>
                             )}
-                            {project.githubUrl && (
+                            {project.repo_urls && project.repo_urls.length > 0 && (
                               <DropdownMenuItem asChild>
-                                <a href={project.githubUrl} target="_blank" rel="noopener noreferrer">
+                                <a href={project.repo_urls[0]} target="_blank" rel="noopener noreferrer">
                                   <Github className="h-4 w-4 mr-2" />
                                   GitHub
                                 </a>
@@ -543,7 +552,7 @@ const Projects = () => {
                       onCheckedChange={(checked) => handleSelect(project.id, !!checked)}
                     />
                     <ImagePreview
-                      src={project.image}
+                      src={project.cover_image || ''}
                       alt={project.title}
                       className="w-20 h-20 rounded-lg shrink-0"
                     />
@@ -572,27 +581,18 @@ const Projects = () => {
                         </DropdownMenu>
                       </div>
                       <div className="flex flex-wrap gap-1 mt-2">
-                        {project.tags.slice(0, 2).map((tag) => (
+                        {project.tech?.slice(0, 2).map((tag) => (
                           <Badge key={tag} variant="secondary" className="text-xs">
                             {tag}
                           </Badge>
                         ))}
                       </div>
                       <div className="flex items-center gap-4 mt-3">
-                        <Badge className={project.status === 'published' ? 'badge-success' : 'badge-muted'}>
-                          {project.status}
+                        <Badge className={project.is_published ? 'badge-success' : 'badge-muted'}>
+                          {project.is_published ? 'published' : 'draft'}
                         </Badge>
-                        <button
-                          onClick={() => toggleProjectFeatured(project.id)}
-                          className={cn(
-                            "p-1",
-                            project.featured ? "text-warning" : "text-muted-foreground"
-                          )}
-                        >
-                          <Star className={cn("h-4 w-4", project.featured && "fill-current")} />
-                        </button>
                         <span className="text-xs text-muted-foreground ml-auto">
-                          {project.views} views
+                          {project.views_count} views
                         </span>
                       </div>
                     </div>
@@ -699,27 +699,27 @@ const Projects = () => {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="description">Description</Label>
+                <Label htmlFor="description">Content (Markdown)</Label>
                 <Textarea
                   id="description"
-                  value={editingProject.description || ''}
-                  onChange={(e) => setEditingProject({ ...editingProject, description: e.target.value })}
-                  placeholder="Project description"
+                  value={editingProject.content || ''}
+                  onChange={(e) => setEditingProject({ ...editingProject, content: e.target.value })}
+                  placeholder="Project content..."
                   rows={4}
                 />
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="image">Image URL</Label>
+                <Label htmlFor="image">Cover Image URL</Label>
                 <Input
                   id="image"
-                  value={editingProject.image || ''}
-                  onChange={(e) => setEditingProject({ ...editingProject, image: e.target.value })}
+                  value={editingProject.cover_image || ''}
+                  onChange={(e) => setEditingProject({ ...editingProject, cover_image: e.target.value })}
                   placeholder="https://example.com/image.jpg"
                 />
-                {editingProject.image && (
+                {editingProject.cover_image && (
                   <img
-                    src={editingProject.image}
+                    src={editingProject.cover_image}
                     alt="Preview"
                     className="w-full h-40 object-cover rounded-lg mt-2"
                   />
@@ -727,14 +727,14 @@ const Projects = () => {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="tags">Tags (comma-separated)</Label>
+                <Label htmlFor="tags">Tech Stack (comma-separated)</Label>
                 <Input
                   id="tags"
-                  value={editingProject.tags?.join(', ') || ''}
+                  value={editingProject.tech?.join(', ') || ''}
                   onChange={(e) =>
                     setEditingProject({
                       ...editingProject,
-                      tags: e.target.value.split(',').map((t) => t.trim()).filter(Boolean),
+                      tech: e.target.value.split(',').map((t) => t.trim()).filter(Boolean),
                     })
                   }
                   placeholder="React, TypeScript, Node.js"
@@ -743,20 +743,32 @@ const Projects = () => {
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="liveUrl">Live URL</Label>
+                  <Label htmlFor="liveUrl">Live Demo URL</Label>
                   <Input
                     id="liveUrl"
-                    value={editingProject.liveUrl || ''}
-                    onChange={(e) => setEditingProject({ ...editingProject, liveUrl: e.target.value })}
+                    value={editingProject.demo_urls?.[0] || ''}
+                    onChange={(e) => {
+                       const newUrls = e.target.value ? [e.target.value] : [];
+                       setEditingProject({
+                         ...editingProject,
+                         demo_urls: newUrls
+                       });
+                    }}
                     placeholder="https://project.com"
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="githubUrl">GitHub URL</Label>
+                  <Label htmlFor="githubUrl">GitHub Repo URL</Label>
                   <Input
                     id="githubUrl"
-                    value={editingProject.githubUrl || ''}
-                    onChange={(e) => setEditingProject({ ...editingProject, githubUrl: e.target.value })}
+                    value={editingProject.repo_urls?.[0] || ''}
+                    onChange={(e) => {
+                       const newUrls = e.target.value ? [e.target.value] : [];
+                       setEditingProject({
+                         ...editingProject,
+                         repo_urls: newUrls
+                       });
+                    }}
                     placeholder="https://github.com/..."
                   />
                 </div>
@@ -766,22 +778,12 @@ const Projects = () => {
                 <div className="flex items-center gap-2">
                   <Switch
                     id="status"
-                    checked={editingProject.status === 'published'}
+                    checked={editingProject.is_published}
                     onCheckedChange={(checked) =>
-                      setEditingProject({ ...editingProject, status: checked ? 'published' : 'draft' })
+                      setEditingProject({ ...editingProject, is_published: checked })
                     }
                   />
                   <Label htmlFor="status">Published</Label>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Switch
-                    id="featured"
-                    checked={editingProject.featured}
-                    onCheckedChange={(checked) =>
-                      setEditingProject({ ...editingProject, featured: checked })
-                    }
-                  />
-                  <Label htmlFor="featured">Featured</Label>
                 </div>
               </div>
             </div>
