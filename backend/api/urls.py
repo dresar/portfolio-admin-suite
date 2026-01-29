@@ -7,7 +7,7 @@ from .views import (
     admin_2fa_verify_view, admin_profile_view, admin_users_list_view, admin_create_view, admin_toggle_status_view, admin_delete_view, admin_reset_password_view, AIKeyViewSet, dashboard_stats_view
 )
 from .views import list_media_view
-# from .ai_views import ai_write, ai_analyze_message, ai_chat, ai_seo, upload_ai_keys, list_ai_keys, test_ai_key, delete_ai_key, add_ai_key
+from .ai_views import ai_write, ai_analyze_message, ai_chat, ai_seo, upload_ai_keys, list_ai_keys, test_ai_key, delete_ai_key, add_ai_key
 
 router = DefaultRouter()
 # Note: Profile and SiteSettings are treated as singletons in viewset, but routed normally

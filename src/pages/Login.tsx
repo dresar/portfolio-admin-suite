@@ -72,7 +72,7 @@ const Login = () => {
       toast({
         variant: "destructive",
         title: "Error",
-        description: "Invalid credentials",
+        description: error instanceof Error ? error.message : "Invalid credentials",
       });
     } finally {
       setIsLoading(false);

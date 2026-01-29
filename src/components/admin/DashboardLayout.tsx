@@ -44,6 +44,7 @@ import { toast } from 'sonner';
 import { useMessages } from '@/hooks/queries/useMessages';
 import { useProfile } from '@/hooks/queries/useSettings';
 import { getPlaceholderImage } from '@/lib/placeholder';
+import { FloatingAssistant } from './FloatingAssistant';
 
 interface NavItem {
   icon: React.ElementType;
@@ -62,7 +63,6 @@ const navItems: NavItem[] = [
   { icon: Briefcase, label: 'Experience', href: '/admin/experience' },
   { icon: GraduationCap, label: 'Education', href: '/admin/education' },
   { icon: Award, label: 'Certificates', href: '/admin/certificates' },
-  { icon: Share2, label: 'Social Links', href: '/admin/social' },
   { icon: Inbox, label: 'Inbox', href: '/admin/inbox' },
   { icon: Key, label: 'AI Keys', href: '/admin/ai-keys' },
   { icon: Settings, label: 'Settings', href: '/admin/settings' },

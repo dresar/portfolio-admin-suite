@@ -163,9 +163,9 @@ const AIKeys = () => {
                     <h3 className="font-semibold capitalize">{key.provider}</h3>
                     <div className="flex items-center gap-2 text-sm text-muted-foreground">
                         <span className="font-mono">
-                            {key.key.substring(0, 8)}...{key.key.substring(key.key.length - 4)}
+                            {key.key ? `${key.key.substring(0, 8)}...${key.key.substring(key.key.length - 4)}` : 'Invalid Key'}
                         </span>
-                        <button onClick={() => copyToClipboard(key.key)} className="hover:text-primary">
+                        <button onClick={() => key.key && copyToClipboard(key.key)} className="hover:text-primary" disabled={!key.key}>
                             <Copy className="h-3 w-3" />
                         </button>
                     </div>

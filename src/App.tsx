@@ -15,10 +15,11 @@ import ExperienceManager from "./pages/admin/ExperienceManager";
 import EducationManager from "./pages/admin/EducationManager";
 import CertificateManager from "./pages/admin/CertificateManager";
 import ContentEditor from "./pages/admin/ContentEditor";
-import SocialLinks from "./pages/admin/SocialLinks";
 import Blog from "./pages/admin/Blog";
 import AIKeys from "./pages/admin/AIKeys";
 import NotFound from "./pages/NotFound";
+import CreateProject from "./pages/admin/projects/CreateProject";
+import EditProject from "./pages/admin/projects/EditProject";
 
 const queryClient = new QueryClient();
 
@@ -36,6 +37,8 @@ const App = () => (
               <Route path="/" element={<Navigate to="/admin" replace />} />
               <Route path="/admin" element={<Dashboard />} />
               <Route path="/admin/projects" element={<Projects />} />
+              <Route path="/admin/projects/new" element={<CreateProject />} />
+              <Route path="/admin/projects/:id/edit" element={<EditProject />} />
               <Route path="/admin/inbox" element={<Inbox />} />
               <Route path="/admin/settings" element={<Settings />} />
               <Route path="/admin/skills" element={<Skills />} />
@@ -43,7 +46,6 @@ const App = () => (
               <Route path="/admin/education" element={<EducationManager />} />
               <Route path="/admin/certificates" element={<CertificateManager />} />
               <Route path="/admin/content" element={<ContentEditor />} />
-              <Route path="/admin/social" element={<SocialLinks />} />
               <Route path="/admin/blog" element={<Blog />} />
               <Route path="/admin/ai-keys" element={<AIKeys />} />
             </Route>
